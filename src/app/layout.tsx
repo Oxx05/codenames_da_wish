@@ -5,10 +5,15 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Codenames Multiplayer",
-  description: "Play Codenames online with friends! Choose from 15+ themes including Pokémon, One Piece, Star Wars, Naruto, and more.",
-  other: {
-    'theme-color': '#0f172a',
+  title: "Codenames Da Wish",
+  description: "Advanced Multiplayer Codenames Web App",
+  manifest: "/manifest.json",
+  themeColor: "#020617",
+  viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Codenames",
   },
   openGraph: {
     title: 'Codenames Multiplayer',
