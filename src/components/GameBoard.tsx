@@ -122,24 +122,24 @@ export default function GameBoard() {
     assassin: 'text-slate-900',
   } as any;
 
-  // Dynamic Grid sizing utility - Optimized for high card counts (up to 100)
+  // Dynamic Grid sizing utility - Optimized for Landscape cards
   const getGridColsClass = (total: number) => {
-    if (total <= 12) return "grid-cols-3 sm:grid-cols-4 lg:grid-cols-4";
-    if (total <= 16) return "grid-cols-4 sm:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5";
-    if (total <= 25) return "grid-cols-5 lg:grid-cols-5 xl:grid-cols-5";
-    if (total <= 36) return "grid-cols-6 sm:grid-cols-6 lg:grid-cols-6 xl:grid-cols-6";
-    if (total <= 49) return "grid-cols-7 sm:grid-cols-7 lg:grid-cols-7 xl:grid-cols-8";
-    if (total <= 64) return "grid-cols-8 sm:grid-cols-8 lg:grid-cols-8 xl:grid-cols-9";
-    if (total <= 81) return "grid-cols-9 sm:grid-cols-9 lg:grid-cols-9 xl:grid-cols-10";
-    return "grid-cols-10 sm:grid-cols-10 lg:grid-cols-10 xl:grid-cols-12";
+    // On mobile we want fewer columns to keep cards "wide"
+    if (total <= 12) return "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4";
+    if (total <= 20) return "grid-cols-3 sm:grid-cols-4 lg:grid-cols-5";
+    if (total <= 25) return "grid-cols-4 sm:grid-cols-5 lg:grid-cols-5";
+    if (total <= 36) return "grid-cols-4 sm:grid-cols-6 lg:grid-cols-6";
+    if (total <= 49) return "grid-cols-5 sm:grid-cols-7 lg:grid-cols-7 xl:grid-cols-8";
+    if (total <= 64) return "grid-cols-6 sm:grid-cols-8 lg:grid-cols-8 xl:grid-cols-9";
+    return "grid-cols-7 sm:grid-cols-9 lg:grid-cols-9 xl:grid-cols-10";
   };
   
   const gridClasses = getGridColsClass(cards.length);
 
   return (
     <div className="h-[100dvh] bg-slate-950 flex flex-col font-sans overflow-hidden">
-      {/* Top Bar */}
-      <header className="bg-slate-900 border-b border-slate-800 p-1 sm:p-2 flex flex-wrap justify-between items-center z-10 shadow-lg shrink-0 gap-1 sm:gap-2">
+      {/* Top Bar - Ultra Compact */}
+      <header className="bg-slate-900 border-b border-slate-800 p-1 sm:p-1.5 flex flex-wrap justify-between items-center z-10 shadow-lg shrink-0 gap-1 sm:gap-2">
         <div className="flex lg:hidden gap-1.5 sm:gap-2 order-2 sm:order-1 flex-1 sm:flex-none justify-center sm:justify-start">
           {(['red', 'blue', ...(numTeams >= 3 ? ['green'] : []), ...(numTeams >= 4 ? ['yellow'] : [])] as const).map(team => {
             const colors: Record<string, { bg: string; border: string; text: string; label: string }> = {
@@ -150,9 +150,9 @@ export default function GameBoard() {
             };
             const c = colors[team];
             return (
-              <div key={team} className={`${c.bg} border ${c.border} px-2 py-0.5 sm:px-3 sm:py-1 rounded-lg flex flex-col items-center min-w-12 sm:min-w-14`}>
-                <span className={`text-[7px] sm:text-[8px] uppercase font-bold ${c.text} opacity-70 tracking-widest`}>{c.label}</span>
-                <span className={`text-base sm:text-lg font-black ${c.text} leading-tight`}>{(remaining as any)[team]}</span>
+              <div key={team} className={`${c.bg} border ${c.border} px-1.5 py-0.5 sm:px-3 sm:py-1 rounded-lg flex flex-col items-center min-w-10 sm:min-w-14`}>
+                <span className={`text-[6px] sm:text-[8px] uppercase font-bold ${c.text} opacity-70 tracking-widest leading-none`}>{c.label}</span>
+                <span className={`text-sm sm:text-lg font-black ${c.text} leading-none mt-0.5`}>{(remaining as any)[team]}</span>
               </div>
             );
           })}
@@ -178,14 +178,14 @@ export default function GameBoard() {
               )}
             </div>
           ) : (
-            <div className={cn("px-4 py-1 sm:px-6 sm:py-1.5 rounded-full border flex flex-col items-center transition-colors shadow-inner", 
+            <div className={cn("px-3 py-0.5 sm:px-6 sm:py-1.5 rounded-full border flex flex-col items-center transition-colors shadow-inner", 
               currentTurn === 'red' ? 'bg-red-950/40 border-red-500/50' : currentTurn === 'blue' ? 'bg-blue-950/40 border-blue-500/50' : currentTurn === 'green' ? 'bg-green-950/40 border-green-500/50' : 'bg-yellow-950/40 border-yellow-500/50'
             )}>
-              <span className={cn("text-xs sm:text-base font-black uppercase tracking-widest", currentTurn === 'red' ? 'text-red-400' : currentTurn === 'blue' ? 'text-blue-400' : currentTurn === 'green' ? 'text-green-400' : 'text-yellow-400')}>
+              <span className={cn("text-[10px] sm:text-base font-black uppercase tracking-widest leading-none", currentTurn === 'red' ? 'text-red-400' : currentTurn === 'blue' ? 'text-blue-400' : currentTurn === 'green' ? 'text-green-400' : 'text-yellow-400')}>
                 {currentTurn} Team
               </span>
-              <span className="text-[9px] sm:text-xs font-semibold text-slate-400">
-                {turnPhase === 'clue' ? 'Awaiting Clue' : `Guessing (${guessesLeft} left)`}
+              <span className="text-[7px] sm:text-xs font-semibold text-slate-400 leading-none mt-0.5">
+                {turnPhase === 'clue' ? 'Awaiting Clue' : `Guessing (${guessesLeft})`}
               </span>
             </div>
           )}
@@ -204,7 +204,7 @@ export default function GameBoard() {
       </header>
 
       <div className={cn(
-        "w-full py-1.5 px-4 text-center text-[10px] sm:text-xs font-black tracking-[0.2em] shadow-md shrink-0 border-b flex justify-between items-center transition-colors duration-500",
+        "w-full py-1 px-3 text-center text-[9px] sm:text-xs font-black tracking-[0.2em] shadow-md shrink-0 border-b flex justify-between items-center transition-colors duration-500",
         myRole === 'spectator' ? 'bg-slate-900 text-slate-400 border-slate-700' :
         myTeam === 'red' ? 'bg-red-600 text-red-50 border-red-500 shadow-red-900/40' :
         myTeam === 'blue' ? 'bg-blue-600 text-blue-50 border-blue-500 shadow-blue-900/40' :
@@ -459,7 +459,7 @@ function CardItem({ card, isSpymaster, onClick, onContextMenu, playable, markabl
       onClick={onClick}
       onContextMenu={onContextMenu}
       className={cn(
-        "relative rounded-md sm:rounded-lg lg:rounded-xl overflow-hidden shadow-md flex flex-col justify-center items-center select-none transition-all duration-300 border-[1px] md:border-2 outline-none w-full h-full min-w-0 min-h-0",
+        "relative rounded-md sm:rounded-lg lg:rounded-xl overflow-hidden shadow-md flex flex-col justify-center items-center select-none transition-all duration-300 border-[1px] md:border-2 outline-none w-full aspect-[3/2] min-w-0 min-h-0",
         // Base unrevealed state
         !card.revealed && "bg-amber-50 border-amber-200/80 shadow-[inset_0_-4px_0_rgba(0,0,0,0.08)] sm:shadow-[inset_0_-6px_0_rgba(0,0,0,0.08)] text-slate-900",
         // Hover state for playable operatives
