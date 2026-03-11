@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Codenames: Multi-Theme Edition</title>
+    <link rel="stylesheet" href="style.css?v=2.0">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Main Menu -->
+        <section id="menu-screen" class="screen active">
+            <div class="title-container">
+                <h1>Codenames</h1>
+                <h2 class="subtitle">Multi-Theme Edition</h2>
+            </div>
+            
+            <div class="settings-card">
+                <h3>Game Settings</h3>
+                
+                <div class="setting-group theme-setting">
+                    <label for="theme-select">Theme</label>
+                    <div class="custom-select-wrapper">
+                        <select id="theme-select" class="custom-select">
+                            <option value="pokemon">Pokémon</option>
+                            <option value="superheroes">Super Heroes</option>
+                            <option value="harrypotter">Harry Potter</option>
+                            <option value="rickandmorty">Rick & Morty</option>
+                            <option value="dogs">Cute Dogs</option>
+                            <option value="countries">Countries / Flags</option>
+                            <option value="digimon">Digimon</option>
+                            <option value="gameofthrones">Game Of Thrones</option>
+                            <option value="invizimals">Invizimals</option>
+                            <option value="classicwords">Classic Words (EN)</option>
+                            <option value="classicwords_pt">Classic Words (PT)</option>
+                        </select>
+                        <i class="fas fa-chevron-down select-icon"></i>
+                    </div>
+                </div>
+
+                <div class="setting-group">
+                    <label for="num-teams">Number of Teams</label>
+                    <div class="number-input">
+                        <button class="dec-btn" data-target="num-teams"><i class="fas fa-minus"></i></button>
+                        <input type="number" id="num-teams" value="2" min="2" max="4" readonly>
+                        <button class="inc-btn" data-target="num-teams"><i class="fas fa-plus"></i></button>
+                    </div>
+                </div>
+
+                <div class="setting-group">
+                    <label for="total-cards">Total Cards</label>
+                    <div class="number-input">
+                        <button class="dec-btn" data-target="total-cards"><i class="fas fa-minus"></i></button>
+                        <input type="number" id="total-cards" value="20" min="5" max="50" readonly>
+                        <button class="inc-btn" data-target="total-cards"><i class="fas fa-plus"></i></button>
+                    </div>
+                </div>
+
+                <div id="teams-container">
+                    <!-- Dynamic team inputs will be injected here -->
+                </div>
+
+                <div class="setting-group assassin-setting">
+                    <label for="assassin-cards">Assassins</label>
+                    <div class="number-input">
+                        <button class="dec-btn" data-target="assassin-cards"><i class="fas fa-minus"></i></button>
+                        <input type="number" id="assassin-cards" value="1" min="1" max="5" readonly>
+                        <button class="inc-btn" data-target="assassin-cards"><i class="fas fa-plus"></i></button>
+                    </div>
+                </div>
+                
+                <div id="settings-error" class="error-msg"></div>
+
+                <button id="start-btn" class="primary-btn pulse">Start Game</button>
+
+                <!-- Multiplayer Section -->
+                <div class="multiplayer-section">
+                    <div class="mp-divider"><span>Multiplayer</span></div>
+                    <div id="room-input-container" class="mp-join" style="display: flex; margin-bottom: 0.8rem;">
+                        <input type="text" id="room-code-input" placeholder="Enter custom room name (e.g. jpsala)">
+                    </div>
+                    <div class="mp-buttons" id="mp-action-buttons">
+                        <button id="create-room-btn" class="mp-btn"><i class="fas fa-plus-circle"></i> Create Room</button>
+                        <button id="join-room-btn" class="mp-btn"><i class="fas fa-sign-in-alt"></i> Join Room</button>
+                    </div>
+                    <div id="room-info" class="mp-room-info hidden">
+                        <div class="room-badge">
+                            <i class="fas fa-wifi"></i>
+                            Room: <strong id="room-code-display"></strong>
+                            <span class="player-badge"><i class="fas fa-users"></i> <span id="player-count">1</span></span>
+                        </div>
+                        <button id="leave-room-btn" class="mp-btn-small mp-leave"><i class="fas fa-times"></i> Leave</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Game Loading -->
+        <section id="loading-screen" class="screen">
+            <div class="loader">
+                <div class="pokeball-spin" id="loader-icon"></div>
+                <h2 id="loading-text">Loading...</h2>
+            </div>
+        </section>
+
+        <!-- Game UI -->
+        <section id="game-screen" class="screen">
+            <header class="game-header">
+                <button id="back-to-menu-btn" class="icon-btn"><i class="fas fa-arrow-left"></i> Menu</button>
+                <div id="score-board-container" class="score-board">
+                    <!-- Dynamic scores will be injected here -->
+                </div>
+                <div class="game-header-right">
+                    <div id="room-info-game" class="room-badge-small hidden">
+                        <i class="fas fa-wifi"></i> <strong id="room-code-game"></strong>
+                        <span class="player-badge-small"><i class="fas fa-users"></i> <span id="player-count-game">1</span></span>
+                    </div>
+                    <button id="spymaster-btn" class="toggle-btn">
+                        <i class="fas fa-eye"></i> Spymaster View
+                    </button>
+                </div>
+            </header>
+            
+            <main class="game-board-container">
+                <div id="game-board" class="grid"></div>
+            </main>
+
+            <!-- Game Over Modal -->
+            <div id="game-over-modal" class="modal hidden">
+                <div class="modal-content">
+                    <h2 id="winner-text">Red Team Wins!</h2>
+                    <p id="game-over-reason">All agents found.</p>
+                    <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                        <button id="view-board-btn" class="secondary-btn">View Board</button>
+                        <button id="play-again-btn" class="primary-btn">Play Again</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script src="apis.js?v=2.0"></script>
+    <script src="multiplayer.js?v=2.0"></script>
+    <script src="script.js?v=2.0"></script>
+</body>
+</html>
