@@ -1,19 +1,29 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: "#020617",
+};
+
 export const metadata: Metadata = {
   title: "Codenames Da Wish",
   description: "Advanced Multiplayer Codenames Web App",
   manifest: "/manifest.json",
-  themeColor: "#020617",
-  viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
     title: "Codenames",
+  },
+  icons: {
+    icon: "/icon-512.png",
+    apple: "/icon-512.png",
   },
   openGraph: {
     title: 'Codenames Multiplayer',
