@@ -244,6 +244,7 @@ export default function GameBoard() {
                   onContextMenu={(e) => handleCardContextMenu(e, idx)}
                   playable={iAmActiveOperative && !card.revealed && !winner}
                   markable={myRole === 'operative' && !card.revealed && !winner}
+                  totalCards={cards.length}
                 />
               ))}
             </div>
@@ -421,7 +422,15 @@ function TeamPanel({ teamId }: { teamId: TeamId }) {
 }
 
 // Subcomponent: Card
-function CardItem({ card, isSpymaster, onClick, onContextMenu, playable, markable }: { card: Card, isSpymaster: boolean, onClick: () => void, onContextMenu: (e: React.MouseEvent) => void, playable: boolean, markable: boolean }) {
+function CardItem({ card, isSpymaster, onClick, onContextMenu, playable, markable, totalCards }: { 
+  card: Card; 
+  isSpymaster: boolean; 
+  onClick: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+  playable: boolean;
+  markable: boolean;
+  totalCards: number;
+}) {
   
   const roleColors: Record<TeamId, string> = {
     red: 'bg-red-600 border-red-500',
@@ -441,6 +450,9 @@ function CardItem({ card, isSpymaster, onClick, onContextMenu, playable, markabl
   };
 
   const isTextOnly = !card.image;
+  // Automatic "High Density" mode: hide images to prioritize text legibility
+  const forceTextOnly = totalCards > 49 || (totalCards > 25 && typeof window !== 'undefined' && window.innerWidth < 640);
+  const effectivelyTextOnly = isTextOnly || forceTextOnly;
 
   return (
     <button 
@@ -467,7 +479,7 @@ function CardItem({ card, isSpymaster, onClick, onContextMenu, playable, markabl
 
       {/* Card Text Content */}
       <div className={cn("relative z-10 w-full h-full flex flex-col justify-center items-center p-1 sm:p-2", card.revealed ? "opacity-100" : "opacity-100")}>
-         {isTextOnly ? (
+         {effectivelyTextOnly ? (
             <svg viewBox="0 0 100 40" preserveAspectRatio="xMidYMid meet" className="w-[94%] h-full overflow-visible">
                 <text x="50" y="22" fontSize={calculateFontSize(card.name, true)} fontWeight="900" textAnchor="middle" dominantBaseline="central" fill={card.revealed ? 'white' : '#1e293b'} stroke={card.revealed ? 'none' : 'rgba(30,41,59,0.1)'} strokeWidth="0.3" className="uppercase" style={{ letterSpacing: '0.04em' }}>{card.name}</text>
             </svg>
