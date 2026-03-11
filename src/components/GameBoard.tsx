@@ -160,12 +160,12 @@ export default function GameBoard() {
             </span>
           )}
           <span className={cn(
-            "text-[8px] font-bold uppercase px-1.5 py-0.5 rounded",
+            "text-[8px] font-bold uppercase px-1.5 py-0.5 rounded flex items-center gap-0.5",
             myRole === 'spymaster' ? 'bg-purple-600/30 text-purple-300' : 
             myRole === 'spectator' ? 'bg-slate-700 text-slate-400' :
             'bg-emerald-600/30 text-emerald-300'
           )}>
-            {myRole === 'spymaster' ? '🔍' : myRole === 'spectator' ? '👁' : '🎯'}
+            {myRole === 'spymaster' ? '🔍 spy' : myRole === 'spectator' ? '👁 spec' : '🎯 op'}
           </span>
         </div>
 
