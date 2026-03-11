@@ -122,16 +122,15 @@ export default function GameBoard() {
     assassin: 'text-slate-900',
   } as any;
 
-  // Dynamic Grid sizing utility - Optimized for Landscape cards
+  // Dynamic Grid sizing utility - Optimized for ultra-wide landscape cards
   const getGridColsClass = (total: number) => {
-    // On mobile we want fewer columns to keep cards "wide"
-    if (total <= 12) return "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4";
-    if (total <= 20) return "grid-cols-3 sm:grid-cols-4 lg:grid-cols-5";
-    if (total <= 25) return "grid-cols-4 sm:grid-cols-5 lg:grid-cols-5";
-    if (total <= 36) return "grid-cols-4 sm:grid-cols-6 lg:grid-cols-6";
-    if (total <= 49) return "grid-cols-5 sm:grid-cols-7 lg:grid-cols-7 xl:grid-cols-8";
-    if (total <= 64) return "grid-cols-6 sm:grid-cols-8 lg:grid-cols-8 xl:grid-cols-9";
-    return "grid-cols-7 sm:grid-cols-9 lg:grid-cols-9 xl:grid-cols-10";
+    // We want very few columns on mobile to maximize card width
+    if (total <= 12) return "grid-cols-2 lg:grid-cols-4";
+    if (total <= 20) return "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5";
+    if (total <= 30) return "grid-cols-3 sm:grid-cols-4 lg:grid-cols-5";
+    if (total <= 42) return "grid-cols-3 sm:grid-cols-5 lg:grid-cols-6";
+    if (total <= 56) return "grid-cols-4 sm:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8";
+    return "grid-cols-5 sm:grid-cols-7 lg:grid-cols-8 xl:grid-cols-10";
   };
   
   const gridClasses = getGridColsClass(cards.length);
@@ -459,7 +458,7 @@ function CardItem({ card, isSpymaster, onClick, onContextMenu, playable, markabl
       onClick={onClick}
       onContextMenu={onContextMenu}
       className={cn(
-        "relative rounded-md sm:rounded-lg lg:rounded-xl overflow-hidden shadow-md flex flex-col justify-center items-center select-none transition-all duration-300 border-[1px] md:border-2 outline-none w-full aspect-[3/2] min-w-0 min-h-0",
+        "relative rounded-md sm:rounded-lg lg:rounded-xl overflow-hidden shadow-md flex flex-col justify-center items-center select-none transition-all duration-300 border-[1px] md:border-2 outline-none w-full aspect-[2.2/1] min-w-0 min-h-0",
         // Base unrevealed state
         !card.revealed && "bg-amber-50 border-amber-200/80 shadow-[inset_0_-4px_0_rgba(0,0,0,0.08)] sm:shadow-[inset_0_-6px_0_rgba(0,0,0,0.08)] text-slate-900",
         // Hover state for playable operatives
