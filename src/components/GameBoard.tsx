@@ -550,7 +550,7 @@ export default function GameBoard() {
 
         {/* Desktop controls hint */}
         {myRole === 'operative' && (
-          <div className="hidden lg:flex gap-4 items-center ml-auto">
+          <div className="hidden lg:flex gap-4 items-center">
             <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700 shadow-sm text-xs font-bold uppercase text-slate-300">
               <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-md border border-emerald-500/30 font-mono shadow-inner shadow-emerald-500/10">LC</kbd> Reveal</span>
               <span className="text-slate-600">/</span>
