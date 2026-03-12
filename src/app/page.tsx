@@ -65,12 +65,24 @@ function ConnectionMenu() {
   const [tab, setTab] = useState<'create' | 'join'>('create');
   const [roomName, setRoomName] = useState('');
   const [password, setPassword] = useState('');
-  const [playerName, setPlayerName] = useState('');
+  const [playerName, setPlayerName] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('codenames_player_name') || '';
+    }
+    return '';
+  });
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [rooms, setRooms] = useState<any[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
+
+  // Save name to localStorage whenever it changes
+  useEffect(() => {
+    if (playerName) {
+      localStorage.setItem('codenames_player_name', playerName);
+    }
+  }, [playerName]);
 
   // Auto-fill room if URL has ?room=Name
   useEffect(() => {

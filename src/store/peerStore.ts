@@ -20,7 +20,8 @@ type GameAction =
   | { type: 'END_GAME'; winner: string }
   | { type: 'RESET_LOBBY' }
   | { type: 'KICK' }
-  | { type: 'TRANSFER_HOST'; newHostName: string };
+  | { type: 'TRANSFER_HOST'; newHostName: string }
+  | { type: 'CHAT_MESSAGE'; msg: any };
 
 interface PeerState {
   peer: Peer | null;
@@ -209,6 +210,13 @@ export const usePeerStore = create<PeerState>((set, get) => {
       case 'RESET_LOBBY':
         if (!isHost) {
           gameStore.resetToLobby();
+        }
+        break;
+
+      case 'CHAT_MESSAGE':
+        gameStore.addChatMessage(action.msg);
+        if (isHost) {
+          get().broadcastAction(action);
         }
         break;
 

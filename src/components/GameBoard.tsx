@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useGameStore, TeamId, Card } from "@/store/gameStore";
 import { usePeerStore } from "@/store/peerStore";
-import { LogOut, RefreshCcw, Hand, Flag, Users, Ban, Crown, Hash, ShieldAlert, Menu, X, Clock, Volume2, VolumeX, Trophy, BarChart2, Eye } from "lucide-react";
+import { LogOut, RefreshCcw, Hand, Flag, Users, Ban, Crown, Hash, ShieldAlert, Menu, X, Clock, Volume2, VolumeX, Trophy, BarChart2, Eye, MessageCircle, Send, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Modal } from './Modal';
 import { SFX } from '@/lib/sounds';
@@ -13,7 +13,8 @@ export default function GameBoard() {
     myPlayerId, players, roomName, isHost,
     cards, remaining, currentTurn, turnPhase, clue, guessesLeft, winner, numTeams,
     theme, totalCards, assassinCount, neutralEndsTurn, turnTimer, turnEndTime,
-    sfxEnabled, toggleSFX, stats
+    sfxEnabled, toggleSFX, stats,
+    chatMessages, clueHistory, addChatMessage
   } = useGameStore();
   const { disconnect, broadcastAction, sendActionToHost } = usePeerStore();
 
@@ -26,6 +27,8 @@ export default function GameBoard() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [showStats, setShowStats] = useState(true);
+  const [chatInput, setChatInput] = useState('');
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   const isMyTurn = currentTurn === myTeam && !winner;
   const iAmActiveSpymaster = isMyTurn && myRole === 'spymaster' && turnPhase === 'clue';
@@ -131,6 +134,30 @@ export default function GameBoard() {
       if (sfxEnabled) SFX.win();
     }
   }, [winner, sfxEnabled]);
+
+  // Auto-scroll chat
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  const handleSendChat = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || !me) return;
+    const msg = {
+      id: Date.now().toString(),
+      sender: me.name,
+      team: me.team,
+      text: chatInput.trim(),
+      timestamp: Date.now()
+    };
+    addChatMessage(msg);
+    if (isHost) {
+      broadcastAction({ type: 'CHAT_MESSAGE', msg } as any);
+    } else {
+      sendActionToHost({ type: 'CHAT_MESSAGE', msg } as any);
+    }
+    setChatInput('');
+  };
 
   const handleEndTurn = () => {
     if (!iAmActiveOperative || winner) return;
@@ -434,6 +461,45 @@ export default function GameBoard() {
               </div>
             </div>
           )}
+
+          {/* Clue History */}
+          {clueHistory.length > 0 && (
+            <div className="bg-slate-800/40 p-3 rounded-xl border border-slate-700/50">
+              <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                <History className="w-3 h-3" /> Clue Log
+              </h4>
+              <div className="flex flex-col gap-1 max-h-32 overflow-y-auto custom-scrollbar">
+                {clueHistory.map((c, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <span className={cn("w-2 h-2 rounded-full shrink-0", c.team === 'red' ? 'bg-red-500' : c.team === 'blue' ? 'bg-blue-500' : c.team === 'green' ? 'bg-green-500' : 'bg-yellow-500')} />
+                    <span className="font-black text-slate-200 uppercase">{c.word}</span>
+                    <span className="text-slate-500 font-bold">{c.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Chat */}
+          <div className="flex flex-col bg-slate-800/40 rounded-xl border border-slate-700/50 overflow-hidden" style={{ minHeight: '120px', maxHeight: '200px' }}>
+            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest p-3 pb-1 flex items-center gap-2">
+              <MessageCircle className="w-3 h-3" /> Chat
+            </h4>
+            <div className="flex-1 overflow-y-auto px-3 py-1 space-y-1 custom-scrollbar">
+              {chatMessages.length === 0 && <p className="text-[10px] text-slate-600 italic">No messages yet.</p>}
+              {chatMessages.map(m => (
+                <div key={m.id} className="text-xs">
+                  <span className={cn("font-bold", teamTextColor[m.team] || 'text-slate-400')}>{m.sender}: </span>
+                  <span className="text-slate-300">{m.text}</span>
+                </div>
+              ))}
+              <div ref={chatEndRef} />
+            </div>
+            <form onSubmit={handleSendChat} className="flex border-t border-slate-700/50">
+              <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Type..." className="flex-1 bg-transparent text-xs text-slate-200 px-3 py-2 outline-none" maxLength={120} />
+              <button type="submit" className="px-3 text-emerald-400 hover:text-emerald-300"><Send className="w-3.5 h-3.5" /></button>
+            </form>
+          </div>
         </aside>
       </main>
 
@@ -674,6 +740,44 @@ export default function GameBoard() {
                   </div>
                 </div>
               )}
+
+              {/* Clue History (Mobile) */}
+              {clueHistory.length > 0 && (
+                <div className="bg-slate-800/40 p-3 rounded-xl border border-slate-700/50">
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                    <History className="w-3.5 h-3.5" /> Clue Log
+                  </h4>
+                  <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto custom-scrollbar">
+                    {clueHistory.map((c, i) => (
+                      <div key={i} className="flex items-center gap-2 text-sm">
+                        <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", c.team === 'red' ? 'bg-red-500' : c.team === 'blue' ? 'bg-blue-500' : c.team === 'green' ? 'bg-green-500' : 'bg-yellow-500')} />
+                        <span className="font-black text-slate-200 uppercase">{c.word}</span>
+                        <span className="text-slate-500 font-bold">{c.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Chat (Mobile) */}
+              <div className="flex flex-col bg-slate-800/40 rounded-xl border border-slate-700/50 overflow-hidden" style={{ minHeight: '140px', maxHeight: '220px' }}>
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest p-3 pb-1 flex items-center gap-2">
+                  <MessageCircle className="w-3.5 h-3.5" /> Chat
+                </h4>
+                <div className="flex-1 overflow-y-auto px-3 py-1 space-y-1 custom-scrollbar">
+                  {chatMessages.length === 0 && <p className="text-xs text-slate-600 italic">No messages yet.</p>}
+                  {chatMessages.map(m => (
+                    <div key={m.id} className="text-sm">
+                      <span className={cn("font-bold", teamTextColor[m.team] || 'text-slate-400')}>{m.sender}: </span>
+                      <span className="text-slate-300">{m.text}</span>
+                    </div>
+                  ))}
+                </div>
+                <form onSubmit={handleSendChat} className="flex border-t border-slate-700/50">
+                  <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Type a message..." className="flex-1 bg-transparent text-sm text-slate-200 px-3 py-2.5 outline-none" maxLength={120} />
+                  <button type="submit" className="px-3 text-emerald-400 hover:text-emerald-300"><Send className="w-4 h-4" /></button>
+                </form>
+              </div>
             </div>
             
             <div className="mt-auto p-4 border-t border-slate-800">
@@ -789,52 +893,30 @@ function CardItem({ card, isSpymaster, onClick, onContextMenu, playable, markabl
   };
 
   const isTextOnly = !card.image;
-  // Hide images on small screens for dense grids
   const forceTextOnly = totalCards > 20 && typeof window !== 'undefined' && window.innerWidth < 640;
   const effectivelyTextOnly = isTextOnly || forceTextOnly;
 
-  return (
-    <button 
-      onClick={onClick}
-      onContextMenu={onContextMenu}
-      className={cn(
-        "relative rounded sm:rounded-lg overflow-hidden flex items-center justify-center select-none transition-all duration-200 border outline-none w-full h-full min-w-0 min-h-0",
-        !card.revealed && "bg-amber-50 border-amber-200/80 text-slate-900",
-        playable && "hover:ring-2 hover:ring-emerald-400 cursor-pointer active:scale-95",
-        markable && !playable && "hover:ring-1 hover:ring-emerald-400/50 cursor-context-menu",
-        (!playable && !markable && !card.revealed) && "cursor-default",
-        card.revealed && roleColors[card.role],
-        card.revealed && "border-transparent"
-      )}
-    >
+  // Front face content (unrevealed side)
+  const frontContent = (
+    <div className="w-full h-full flex flex-col justify-center items-center p-0.5 sm:p-1 relative">
       {/* Spymaster overlay */}
       {isSpymaster && !card.revealed && (
         <div className={cn("absolute inset-0.5 sm:inset-1 border sm:border-2 rounded sm:rounded-md opacity-50 pointer-events-none", roleColors[card.role])} />
       )}
-
-      {/* Card content */}
-      <div className="relative z-10 w-full h-full flex flex-col justify-center items-center p-0.5 sm:p-1">
-        {effectivelyTextOnly ? (
-          <svg viewBox="0 0 100 40" preserveAspectRatio="xMidYMid meet" className="w-[94%] h-full overflow-visible">
-            <text x="50" y="22" fontSize={calculateFontSize(card.name, true)} fontWeight="900" textAnchor="middle" dominantBaseline="central" fill={card.revealed ? 'white' : '#1e293b'} stroke={card.revealed ? 'none' : 'rgba(30,41,59,0.1)'} strokeWidth="0.3" className="uppercase" style={{ letterSpacing: '0.04em' }}>{card.name}</text>
-          </svg>
-        ) : (
-          <>
-            {card.image && <img src={card.image} alt={card.name} className={cn("w-auto max-w-[80%] h-[40%] sm:h-[50%] object-contain", card.revealed && "opacity-50 grayscale")} />}
-            <div className="w-[94%] bg-slate-900/85 rounded flex items-center justify-center px-1 py-0.5 absolute bottom-0.5 sm:bottom-1 border border-white/10">
-              <svg viewBox="0 0 100 22" preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
-                <text x="50" y="12" fontSize={calculateFontSize(card.name, true)} fontWeight="900" textAnchor="middle" dominantBaseline="central" fill="white" stroke="rgba(0,0,0,0.4)" strokeWidth="0.5" className="uppercase" style={{ letterSpacing: '0.05em' }}>{card.name}</text>
-              </svg>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Assassin overlay */}
-      {card.revealed && card.role === 'assassin' && (
-        <div className="absolute inset-0 bg-red-600/20 mix-blend-overlay pointer-events-none flex items-center justify-center">
-          <span className="text-2xl sm:text-4xl">❌</span>
-        </div>
+      
+      {effectivelyTextOnly ? (
+        <svg viewBox="0 0 100 40" preserveAspectRatio="xMidYMid meet" className="w-[94%] h-full overflow-visible">
+          <text x="50" y="22" fontSize={calculateFontSize(card.name, true)} fontWeight="900" textAnchor="middle" dominantBaseline="central" fill="#1e293b" stroke="rgba(30,41,59,0.1)" strokeWidth="0.3" className="uppercase" style={{ letterSpacing: '0.04em' }}>{card.name}</text>
+        </svg>
+      ) : (
+        <>
+          {card.image && <img src={card.image} alt={card.name} className="w-auto max-w-[80%] h-[40%] sm:h-[50%] object-contain" />}
+          <div className="w-[94%] bg-slate-900/85 rounded flex items-center justify-center px-1 py-0.5 absolute bottom-0.5 sm:bottom-1 border border-white/10">
+            <svg viewBox="0 0 100 22" preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
+              <text x="50" y="12" fontSize={calculateFontSize(card.name, true)} fontWeight="900" textAnchor="middle" dominantBaseline="central" fill="white" stroke="rgba(0,0,0,0.4)" strokeWidth="0.5" className="uppercase" style={{ letterSpacing: '0.05em' }}>{card.name}</text>
+            </svg>
+          </div>
+        </>
       )}
 
       {/* Team marks */}
@@ -845,6 +927,57 @@ function CardItem({ card, isSpymaster, onClick, onContextMenu, playable, markabl
           ))}
         </div>
       )}
+    </div>
+  );
+
+  // Back face content (revealed side)
+  const backContent = (
+    <div className={cn("w-full h-full flex flex-col justify-center items-center p-0.5 sm:p-1 relative", roleColors[card.role])}>
+      {effectivelyTextOnly ? (
+        <svg viewBox="0 0 100 40" preserveAspectRatio="xMidYMid meet" className="w-[94%] h-full overflow-visible">
+          <text x="50" y="22" fontSize={calculateFontSize(card.name, true)} fontWeight="900" textAnchor="middle" dominantBaseline="central" fill="white" className="uppercase" style={{ letterSpacing: '0.04em' }}>{card.name}</text>
+        </svg>
+      ) : (
+        <>
+          {card.image && <img src={card.image} alt={card.name} className="w-auto max-w-[80%] h-[40%] sm:h-[50%] object-contain opacity-50 grayscale" />}
+          <div className="w-[94%] bg-slate-900/85 rounded flex items-center justify-center px-1 py-0.5 absolute bottom-0.5 sm:bottom-1 border border-white/10">
+            <svg viewBox="0 0 100 22" preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
+              <text x="50" y="12" fontSize={calculateFontSize(card.name, true)} fontWeight="900" textAnchor="middle" dominantBaseline="central" fill="white" stroke="rgba(0,0,0,0.4)" strokeWidth="0.5" className="uppercase" style={{ letterSpacing: '0.05em' }}>{card.name}</text>
+            </svg>
+          </div>
+        </>
+      )}
+
+      {/* Assassin overlay */}
+      {card.role === 'assassin' && (
+        <div className="absolute inset-0 bg-red-600/20 mix-blend-overlay pointer-events-none flex items-center justify-center">
+          <span className="text-2xl sm:text-4xl">❌</span>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <button 
+      onClick={onClick}
+      onContextMenu={onContextMenu}
+      className={cn(
+        "card-container relative rounded sm:rounded-lg overflow-hidden flex items-center justify-center select-none transition-shadow duration-200 border outline-none w-full h-full min-w-0 min-h-0",
+        !card.revealed && "bg-amber-50 border-amber-200/80 text-slate-900",
+        card.revealed && "border-transparent",
+        playable && "hover:ring-2 hover:ring-emerald-400 cursor-pointer",
+        markable && !playable && "hover:ring-1 hover:ring-emerald-400/50 cursor-context-menu",
+        (!playable && !markable && !card.revealed) && "cursor-default",
+      )}
+    >
+      <div className={cn("card-inner", card.revealed && "flipped")}>
+        <div className="card-face bg-amber-50 rounded sm:rounded-lg">
+          {frontContent}
+        </div>
+        <div className={cn("card-face card-back rounded sm:rounded-lg", roleColors[card.role])}>
+          {backContent}
+        </div>
+      </div>
     </button>
   );
 }

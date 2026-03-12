@@ -25,6 +25,21 @@ export interface Clue {
   count: number;
 }
 
+export interface ChatMessage {
+  id: string;
+  sender: string;
+  team: TeamId;
+  text: string;
+  timestamp: number;
+}
+
+export interface ClueHistoryEntry {
+  team: TeamId;
+  word: string;
+  count: number;
+  turn: number;
+}
+
 interface GameState {
   // Multiplayer Connection State
   mpStatus: 'disconnected' | 'connecting' | 'lobby' | 'playing';
@@ -63,6 +78,9 @@ interface GameState {
 
   sfxEnabled: boolean;
 
+  chatMessages: ChatMessage[];
+  clueHistory: ClueHistoryEntry[];
+
   // Actions
   joinLobby: (roomName: string, isHost: boolean, myId: string) => void;
   updatePlayers: (players: Player[]) => void;
@@ -76,6 +94,7 @@ interface GameState {
   endGame: (winner: TeamId | 'assassin') => void;
   resetToLobby: () => void;
   disconnect: () => void;
+  addChatMessage: (msg: ChatMessage) => void;
   applyFullState: (state: Partial<GameState>) => void; // For host -> guest major syncs
 }
 
@@ -114,6 +133,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   sfxEnabled: true,
 
+  chatMessages: [],
+  clueHistory: [],
+
   joinLobby: (roomName, isHost, myId) => set({
     mpStatus: 'lobby',
     roomName,
@@ -149,7 +171,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         clues: 0,
         correctGuesses: 0,
         wrongGuesses: 0,
-      }
+      },
+      chatMessages: [],
+      clueHistory: []
     };
   }),
 
@@ -158,7 +182,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     clue: { word, count },
     guessesLeft: count + 1, // +1 for the extra guess rule
     turnEndTime: state.turnTimer > 0 ? Date.now() + state.turnTimer * 1000 : null,
-    stats: { ...state.stats, clues: state.stats.clues + 1 }
+    stats: { ...state.stats, clues: state.stats.clues + 1 },
+    clueHistory: [...state.clueHistory, { team: state.currentTurn, word, count, turn: state.stats.turns }]
   })),
 
   revealCard: (index) => set((state) => {
@@ -268,6 +293,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     turnPhase: 'clue',
     clue: null,
     guessesLeft: 0,
+    chatMessages: [],
+    clueHistory: [],
   }),
 
   disconnect: () => set({
@@ -279,6 +306,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     winner: null,
     cards: []
   }),
+
+  addChatMessage: (msg) => set((state) => ({
+    chatMessages: [...state.chatMessages.slice(-49), msg] // Keep last 50 messages
+  })),
   
   applyFullState: (newState) => set((state) => ({ ...state, ...newState }))
 }));
