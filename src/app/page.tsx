@@ -9,6 +9,40 @@ import GameBoard from "@/components/GameBoard";
 
 export default function App() {
   const mpStatus = useGameStore(s => s.mpStatus);
+  const disconnect = usePeerStore(s => s.disconnect);
+  const isHost = useGameStore(s => s.isHost);
+  const playersCount = useGameStore(s => s.players.length);
+
+  // Mobile Back-Button Trap
+  useEffect(() => {
+    // Only trap history if we are actively connected to a room
+    if (mpStatus === 'disconnected') return;
+
+    // Push a dummy state so there is something to "pop" when the user hits back
+    window.history.pushState({ page: 'room' }, '', '');
+
+    const handlePopState = (e: PopStateEvent) => {
+      // The browser just popped our dummy state. We are still on the page, but the history pointer moved back.
+      const confirmLeave = window.confirm("Are you sure you want to leave the game room?");
+      
+      if (confirmLeave) {
+        // If they click yes, we execute the disconnect logic
+        if (isHost && playersCount > 1) {
+           usePeerStore.getState().transferHost(useGameStore.getState().players.find(p => p.id !== useGameStore.getState().myPlayerId)?.name || '', true);
+        } else {
+           disconnect();
+        }
+      } else {
+        // If they click cancel, we push another phantom state immediately to re-trap the next back click
+        window.history.pushState({ page: 'room' }, '', '');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [mpStatus, disconnect, isHost, playersCount]);
   
   if (mpStatus === 'lobby') return <LobbyScreen />;
   if (mpStatus === 'playing') return <GameBoard />;
@@ -36,6 +70,18 @@ function ConnectionMenu() {
   const [error, setError] = useState('');
   const [rooms, setRooms] = useState<any[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
+
+  // Auto-fill room if URL has ?room=Name
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const roomParam = urlParams.get('room');
+      if (roomParam) {
+        setRoomName(roomParam);
+        setTab('join');
+      }
+    }
+  }, []);
 
   const initializeHost = usePeerStore(s => s.initializeHost);
   const joinRoomAction = usePeerStore(s => s.joinRoom);

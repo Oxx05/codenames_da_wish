@@ -42,20 +42,32 @@ interface GameState {
   cardsPerTeam: Record<string, number>;
   firstTeam: TeamId | 'random';
   neutralEndsTurn: boolean;
+  turnTimer: number; // 0 for disabled, or seconds (e.g. 60, 90, 120)
 
   // Active Game State
   cards: Card[];
   remaining: Record<TeamId, number>;
   currentTurn: TeamId;
   turnPhase: 'clue' | 'guess';
+  turnEndTime: number | null; // Timestamp for when the current turn must end
   clue: Clue | null;
   guessesLeft: number;
   winner: TeamId | 'assassin' | null;
 
+  stats: {
+    turns: number;
+    clues: number;
+    correctGuesses: number;
+    wrongGuesses: number;
+  };
+
+  sfxEnabled: boolean;
+
   // Actions
   joinLobby: (roomName: string, isHost: boolean, myId: string) => void;
   updatePlayers: (players: Player[]) => void;
-  updateSettings: (settings: Partial<Pick<GameState, 'theme' | 'numTeams' | 'totalCards' | 'assassinCount' | 'firstTeam' | 'cardsPerTeam' | 'neutralEndsTurn'>>) => void;
+  updateSettings: (settings: Partial<Pick<GameState, 'theme' | 'numTeams' | 'totalCards' | 'assassinCount' | 'firstTeam' | 'cardsPerTeam' | 'neutralEndsTurn' | 'turnTimer'>>) => void;
+  toggleSFX: () => void;
   startGame: (cards: Card[], firstTurn: TeamId) => void;
   giveClue: (word: string, count: number) => void;
   revealCard: (index: number) => void;
@@ -82,14 +94,25 @@ export const useGameStore = create<GameState>((set, get) => ({
   cardsPerTeam: { red: 0, blue: 0, green: 0, yellow: 0 }, // 0 means auto-calculate
   firstTeam: 'random',
   neutralEndsTurn: true,
+  turnTimer: 0,
 
   cards: [],
   remaining: { red: 0, blue: 0, green: 0, yellow: 0, neutral: 0, assassin: 0 },
   currentTurn: 'red',
   turnPhase: 'clue',
+  turnEndTime: null,
   clue: null,
   guessesLeft: 0,
   winner: null,
+
+  stats: {
+    turns: 1,
+    clues: 0,
+    correctGuesses: 0,
+    wrongGuesses: 0,
+  },
+
+  sfxEnabled: true,
 
   joinLobby: (roomName, isHost, myId) => set({
     mpStatus: 'lobby',
@@ -105,27 +128,38 @@ export const useGameStore = create<GameState>((set, get) => ({
     return { ...state, ...settings };
   }),
 
-  startGame: (cards, firstTurn) => {
+  toggleSFX: () => set((state) => ({ sfxEnabled: !state.sfxEnabled })),
+
+  startGame: (cards, firstTurn) => set((state) => {
     const remaining = { red: 0, blue: 0, green: 0, yellow: 0, neutral: 0, assassin: 0 };
     cards.forEach(c => remaining[c.role]++);
     
-    set({
+    return {
       mpStatus: 'playing',
       cards,
       remaining,
       currentTurn: firstTurn,
       turnPhase: 'clue',
+      turnEndTime: state.turnTimer > 0 ? Date.now() + state.turnTimer * 1000 : null,
       clue: null,
       guessesLeft: 0,
-      winner: null
-    });
-  },
+      winner: null,
+      stats: {
+        turns: 1,
+        clues: 0,
+        correctGuesses: 0,
+        wrongGuesses: 0,
+      }
+    };
+  }),
 
-  giveClue: (word, count) => set({
+  giveClue: (word, count) => set((state) => ({
     turnPhase: 'guess',
     clue: { word, count },
-    guessesLeft: count + 1 // +1 for the extra guess rule
-  }),
+    guessesLeft: count + 1, // +1 for the extra guess rule
+    turnEndTime: state.turnTimer > 0 ? Date.now() + state.turnTimer * 1000 : null,
+    stats: { ...state.stats, clues: state.stats.clues + 1 }
+  })),
 
   revealCard: (index) => set((state) => {
     if (state.winner || state.cards[index].revealed) return state;
@@ -165,13 +199,25 @@ export const useGameStore = create<GameState>((set, get) => ({
       nextTurn = activeTeams[(turnIdx + 1) % activeTeams.length];
     }
 
+    const isCorrect = card.role === state.currentTurn;
+    const isNeutral = card.role === 'neutral';
+    const isAssassin = card.role === 'assassin';
+
     return {
       cards: newCards,
       remaining: newRemaining,
       turnPhase: nextPhase,
       currentTurn: nextTurn,
+      turnEndTime: (nextTurn !== state.currentTurn || nextPhase !== state.turnPhase) && state.turnTimer > 0 
+        ? Date.now() + state.turnTimer * 1000 
+        : state.turnEndTime,
       guessesLeft: nextGuesses,
-      winner
+      winner,
+      stats: {
+        ...state.stats,
+        correctGuesses: isCorrect ? state.stats.correctGuesses + 1 : state.stats.correctGuesses,
+        wrongGuesses: (!isCorrect && !isNeutral && !isAssassin) ? state.stats.wrongGuesses + 1 : state.stats.wrongGuesses,
+      }
     };
   }),
 
@@ -205,8 +251,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     return {
       turnPhase: 'clue',
       currentTurn: nextTurn,
+      turnEndTime: state.turnTimer > 0 ? Date.now() + state.turnTimer * 1000 : null,
       guessesLeft: 0,
-      clue: null
+      clue: null,
+      stats: { ...state.stats, turns: state.stats.turns + 1 }
     };
   }),
 

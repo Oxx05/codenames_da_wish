@@ -4,10 +4,10 @@ import { useGameStore, Player, TeamId, PlayerRole } from "@/store/gameStore";
 import { usePeerStore } from "@/store/peerStore";
 import { useState } from "react";
 import { themes, ThemeId } from "@/lib/themes";
-import { Users, Settings, LogOut, Play, AlertTriangle, Dice5, Dices, Ban, Crown } from "lucide-react";
+import { Users, Settings, LogOut, Play, AlertTriangle, Dice5, Dices, Ban, Crown, Copy, CheckCircle } from "lucide-react";
 
 export default function LobbyScreen() {
-  const { isHost, roomName, players, myPlayerId, theme, numTeams, totalCards, assassinCount, cardsPerTeam, firstTeam, neutralEndsTurn } = useGameStore();
+  const { isHost, roomName, players, myPlayerId, theme, numTeams, totalCards, assassinCount, cardsPerTeam, firstTeam, neutralEndsTurn, turnTimer } = useGameStore();
   const { disconnect, broadcastAction, sendActionToHost, kickPlayer, transferHost } = usePeerStore();
 
   const me = players.find(p => p.id === myPlayerId);
@@ -31,6 +31,15 @@ export default function LobbyScreen() {
 
   const [isFlipping, setIsFlipping] = useState(false);
   const [tempValues, setTempValues] = useState<Record<string, string>>({});
+  const [isCopied, setIsCopied] = useState(false);
+
+  const handleCopyLink = () => {
+    if (typeof window === 'undefined') return;
+    const url = `${window.location.origin}?room=${roomName}`;
+    navigator.clipboard.writeText(url);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
 
   const handleLeave = () => {
     disconnect();
@@ -133,9 +142,18 @@ export default function LobbyScreen() {
         {/* Header */}
         <div className="bg-slate-950/50 p-4 sm:p-6 lg:p-8 border-b border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-wider flex items-center gap-3 text-emerald-500">
-              <Users className="w-8 h-8"/> Room: <span className="text-white">{roomName}</span>
-            </h2>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+              <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-wider flex items-center gap-3 text-emerald-500">
+                <Users className="w-8 h-8"/> Room: <span className="text-white">{roomName}</span>
+              </h2>
+              <button 
+                onClick={handleCopyLink}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition-all border border-slate-700 w-fit"
+              >
+                {isCopied ? <CheckCircle className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                {isCopied ? <span className="text-emerald-400">Copied!</span> : "Copy Link"}
+              </button>
+            </div>
             <p className="text-slate-400 text-sm mt-2">
               Select your team and role. The host will start the game.
             </p>
@@ -319,6 +337,34 @@ export default function LobbyScreen() {
                   ) : (
                     <div className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1 text-xs font-bold uppercase text-slate-300">
                       {neutralEndsTurn ? 'Yes' : 'No'}
+                    </div>
+                  )}
+                </div>
+
+                {/* Turn Timer Select */}
+                <div className="pt-4 border-t border-slate-700/50 mt-2 flex justify-between items-center">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Turn Timer</label>
+                    <span className="text-[10px] text-slate-500">Auto-ends turns?</span>
+                  </div>
+                  {isHost ? (
+                    <select 
+                      value={turnTimer}
+                      onChange={e => {
+                        const val = parseInt(e.target.value);
+                        useGameStore.getState().updateSettings({ turnTimer: val });
+                        broadcastAction({ type: 'UPDATE_SETTINGS', settings: { turnTimer: val } } as any);
+                      }}
+                      className="bg-slate-800 border-2 border-slate-700 rounded-lg px-2 py-1 text-xs font-bold outline-none cursor-pointer focus:border-emerald-500"
+                    >
+                      <option value={0}>Off ♾️</option>
+                      <option value={60}>60s ⏱️</option>
+                      <option value={90}>90s ⏱️</option>
+                      <option value={120}>120s ⏱️</option>
+                    </select>
+                  ) : (
+                    <div className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1 text-xs font-bold uppercase text-slate-300">
+                      {turnTimer === 0 ? 'Off' : `${turnTimer}s`}
                     </div>
                   )}
                 </div>

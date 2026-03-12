@@ -3,15 +3,17 @@
 import React, { useEffect, useState } from 'react';
 import { useGameStore, TeamId, Card } from "@/store/gameStore";
 import { usePeerStore } from "@/store/peerStore";
-import { LogOut, RefreshCcw, Hand, Flag, Users, Ban, Crown, Hash, ShieldAlert } from "lucide-react";
+import { LogOut, RefreshCcw, Hand, Flag, Users, Ban, Crown, Hash, ShieldAlert, Menu, X, Clock, Volume2, VolumeX, Trophy, BarChart2, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Modal } from './Modal';
+import { SFX } from '@/lib/sounds';
 
 export default function GameBoard() {
   const { 
     myPlayerId, players, roomName, isHost,
     cards, remaining, currentTurn, turnPhase, clue, guessesLeft, winner, numTeams,
-    theme, totalCards, assassinCount, neutralEndsTurn
+    theme, totalCards, assassinCount, neutralEndsTurn, turnTimer, turnEndTime,
+    sfxEnabled, toggleSFX, stats
   } = useGameStore();
   const { disconnect, broadcastAction, sendActionToHost } = usePeerStore();
 
@@ -21,6 +23,9 @@ export default function GameBoard() {
 
   const [clueWord, setClueWord] = useState('');
   const [clueCount, setClueCount] = useState(1);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [showStats, setShowStats] = useState(true);
 
   const isMyTurn = currentTurn === myTeam && !winner;
   const iAmActiveSpymaster = isMyTurn && myRole === 'spymaster' && turnPhase === 'clue';
@@ -78,6 +83,68 @@ export default function GameBoard() {
     }
   }, [currentTurn, iAmActiveOperative, winner]);
 
+  // Turn Timer Loop
+  useEffect(() => {
+    if (!turnEndTime || turnTimer === 0 || winner) {
+      setTimeLeft(null);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const remainingMs = Math.max(0, turnEndTime - Date.now());
+      setTimeLeft(Math.ceil(remainingMs / 1000));
+
+      if (remainingMs <= 0) {
+        clearInterval(interval);
+        if (isHost && !winner) {
+          useGameStore.getState().endTurn();
+          broadcastAction({ type: 'END_TURN' } as any);
+        }
+      }
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [turnEndTime, turnTimer, winner, isHost, broadcastAction]);
+
+  // Sound Effects Triggers
+  useEffect(() => {
+    if (!sfxEnabled) return;
+    
+    // Find the last revealed card
+    const revealedCount = cards.filter(c => c.revealed).length;
+    if (revealedCount === 0) return;
+
+    // Use a ref or simple state to track previous count to avoid playing on initial load
+    // But since this is a functional component, we can just check if it was a user action
+    // Actually, a simpler way is to check the roles of newly revealed cards
+  }, [cards, sfxEnabled]);
+
+  // We need to track the previous cards to know WHICH one was revealed
+  const [prevCards, setPrevCards] = useState(cards);
+  
+  useEffect(() => {
+    if (!sfxEnabled || prevCards.length === 0) {
+      setPrevCards(cards);
+      return;
+    }
+
+    const revealedIdx = cards.findIndex((c, i) => c.revealed && !prevCards[i]?.revealed);
+    if (revealedIdx !== -1) {
+      const card = cards[revealedIdx];
+      if (card.role === 'assassin') SFX.assassin();
+      else if (card.role === 'neutral') SFX.neutral();
+      else SFX.correct();
+    }
+    setPrevCards(cards);
+  }, [cards, sfxEnabled]);
+
+  useEffect(() => {
+    if (winner && sfxEnabled) {
+      SFX.win();
+      setShowStats(true);
+    }
+  }, [winner, sfxEnabled]);
+
   const handleEndTurn = () => {
     if (!iAmActiveOperative || winner) return;
     const action = { type: 'END_TURN' } as any;
@@ -134,34 +201,33 @@ export default function GameBoard() {
   return (
     <div className="h-[100dvh] bg-slate-950 flex flex-col font-sans overflow-hidden">
       {/* ===== MOBILE HEADER: Single ultra-compact bar ===== */}
-      <header className="lg:hidden flex items-center justify-between px-2 py-1 bg-slate-900 border-b border-slate-800 shrink-0 z-10 gap-1">
-        {/* Scores */}
-        <div className="flex gap-1">
+      <header className="lg:hidden flex items-center justify-between px-2 py-1 bg-slate-900 border-b border-slate-800 shrink-0 z-10 gap-1.5">
+        {/* 1. Hamburger Menu (Far Left) */}
+        <button 
+          onClick={() => setIsMobileMenuOpen(true)}
+          className="p-1 px-1.5 text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 shrink-0"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+
+        {/* 2. Team Scores */}
+        <div className="flex gap-1 shrink-0">
           {(['red', 'blue', ...(numTeams >= 3 ? ['green'] : []), ...(numTeams >= 4 ? ['yellow'] : [])] as string[]).map(team => (
             <div key={team} className={cn(
-              "flex items-center gap-1 px-1.5 py-0.5 rounded-md text-white font-black text-xs",
+              "flex items-center gap-1 px-1.5 py-0.5 rounded-md text-white font-black text-[10px]",
               teamBgColor[team],
               currentTurn === team && !winner && "ring-1 ring-white/50"
             )}>
-              <span className="text-[8px] opacity-80 uppercase">{team[0]}</span>
+              <span className="text-[8px] opacity-80 uppercase font-bold">{team[0]}</span>
               <span>{(remaining as any)[team]}</span>
             </div>
           ))}
         </div>
         
-        {/* Center: Turn info + role badge */}
-        <div className="flex items-center gap-1.5">
-          {winner ? (
-            <span className="text-amber-400 text-[10px] font-black uppercase animate-pulse">
-              {winner === 'assassin' ? `💀 ${currentTurn}` : `🏆 ${winner}`}
-            </span>
-          ) : (
-            <span className={cn("text-[10px] font-bold uppercase", teamTextColor[currentTurn])}>
-              {currentTurn} · {turnPhase === 'clue' ? 'Clue' : `Guess (${guessesLeft})`}
-            </span>
-          )}
+        {/* 3. Center: Role Badge + Turn info (Middle) */}
+        <div className="flex-1 flex flex-col items-center justify-center min-w-0 overflow-hidden px-1">
           <span className={cn(
-            "text-[8px] font-bold uppercase px-1.5 py-0.5 rounded flex items-center gap-0.5",
+            "text-[7px] font-black uppercase px-1.5 py-0 rounded-sm flex items-center gap-0.5 mb-0.5 shrink-0",
             myTeam === 'red' ? 'bg-red-600/30 text-red-300' :
             myTeam === 'blue' ? 'bg-blue-600/30 text-blue-300' :
             myTeam === 'green' ? 'bg-green-600/30 text-green-300' :
@@ -170,16 +236,39 @@ export default function GameBoard() {
           )}>
             {myRole === 'spymaster' ? '🔍 spy' : myRole === 'spectator' ? '👁 spec' : '🎯 op'}
           </span>
+          {winner ? (
+            <span className="text-amber-400 text-[10px] font-black uppercase animate-pulse truncate">
+              {winner === 'assassin' ? `💀 ${currentTurn}` : `🏆 ${winner}`}
+            </span>
+          ) : (
+            <div className="flex items-center gap-1 min-w-0">
+              {timeLeft !== null && (
+                <span className={cn("text-[9px] font-black uppercase flex items-center gap-0.5 shrink-0", timeLeft <= 10 ? 'text-rose-400' : 'text-slate-400')}>
+                  {timeLeft}s
+                </span>
+              )}
+              <span className={cn("text-[10px] font-extrabold uppercase truncate", teamTextColor[currentTurn])}>
+                {currentTurn[0]} · {turnPhase === 'clue' ? 'Clue' : `Guess(${guessesLeft})`}
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* Actions */}
-        <div className="flex gap-1">
+        {/* 4. Actions (Far Right) */}
+        <div className="flex gap-0.5 items-center shrink-0">
+          <button 
+            onClick={toggleSFX}
+            className="p-1 text-slate-400 hover:text-white cursor-pointer"
+            title={sfxEnabled ? "Mute Sounds" : "Unmute Sounds"}
+          >
+            {sfxEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4 text-rose-500" />}
+          </button>
           {isHost && (
-            <button onClick={handleResetLobby} className="p-1.5 text-slate-400 hover:text-amber-400 cursor-pointer">
+            <button onClick={handleResetLobby} className="p-1 text-slate-400 hover:text-amber-400 cursor-pointer">
               <RefreshCcw className="w-3.5 h-3.5" />
             </button>
           )}
-          <button onClick={handleLeave} className="p-1.5 text-slate-400 hover:text-rose-400 cursor-pointer">
+          <button onClick={handleLeave} className="p-1 text-slate-400 hover:text-rose-400 cursor-pointer">
             <LogOut className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -215,15 +304,29 @@ export default function GameBoard() {
             )}
           </div>
         ) : (
-          <div className={cn("px-6 py-1.5 rounded-full border flex flex-col items-center",
+          <div className={cn("px-6 py-1.5 rounded-full border flex flex-col items-center relative",
             currentTurn === 'red' ? 'bg-red-950/40 border-red-500/50' : currentTurn === 'blue' ? 'bg-blue-950/40 border-blue-500/50' : currentTurn === 'green' ? 'bg-green-950/40 border-green-500/50' : 'bg-yellow-950/40 border-yellow-500/50'
           )}>
-            <span className={cn("text-base font-black uppercase tracking-widest", teamTextColor[currentTurn])}>{currentTurn} Team</span>
+            <div className="flex items-center gap-2">
+              <span className={cn("text-base font-black uppercase tracking-widest", teamTextColor[currentTurn])}>{currentTurn} Team</span>
+              {timeLeft !== null && (
+                <span className={cn("text-sm font-black flex items-center gap-1 bg-slate-900/50 px-2 py-0.5 rounded-md border border-slate-700/50", timeLeft <= 10 ? 'text-rose-400 animate-pulse border-rose-500/50' : 'text-slate-300')}>
+                  <Clock className="w-4 h-4" /> {timeLeft}
+                </span>
+              )}
+            </div>
             <span className="text-xs font-semibold text-slate-400">{turnPhase === 'clue' ? 'Awaiting Clue' : `Guessing (${guessesLeft} left)`}</span>
           </div>
         )}
 
         <div className="flex items-center gap-3">
+          <button 
+            onClick={toggleSFX}
+            className="p-2 text-slate-400 hover:text-white rounded-lg border border-slate-800 hover:border-slate-700 transition-all cursor-pointer"
+            title={sfxEnabled ? "Mute Sounds" : "Unmute Sounds"}
+          >
+            {sfxEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5 text-rose-500" />}
+          </button>
           <span className={cn(
             "text-xs font-bold uppercase px-3 py-1 rounded-lg border",
             myTeam === 'red' ? 'bg-red-600/20 text-red-300 border-red-500/30' :
@@ -306,11 +409,21 @@ export default function GameBoard() {
               <span className="text-slate-500 font-medium">Theme</span>
               <span className="text-slate-200 font-bold uppercase">{theme}</span>
             </div>
-            <div className="mt-2 pt-2 border-t border-slate-700/50 flex justify-between items-center text-xs">
-              <span className="text-slate-400 font-bold">Neutral Ends Turn</span>
-              <span className={cn("font-bold px-1.5 py-0.5 rounded text-[10px] uppercase", neutralEndsTurn ? "bg-rose-500/20 text-rose-400" : "bg-emerald-500/20 text-emerald-400")}>
-                {neutralEndsTurn ? 'Yes' : 'No'}
-              </span>
+            <div className="mt-2 pt-2 border-t border-slate-700/50 flex flex-col gap-2">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-bold">Neutral Ends Turn</span>
+                <span className={cn("font-bold px-1.5 py-0.5 rounded text-[10px] uppercase", neutralEndsTurn ? "bg-rose-500/20 text-rose-400" : "bg-emerald-500/20 text-emerald-400")}>
+                  {neutralEndsTurn ? 'Yes' : 'No'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-bold">Turn Timer</span>
+                <span className="text-slate-200 font-bold">{turnTimer === 0 ? 'Off' : `${turnTimer}s`}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-bold">Sound Effects</span>
+                <span className={cn("font-bold", sfxEnabled ? "text-emerald-400" : "text-slate-500")}>{sfxEnabled ? 'On' : 'Off'}</span>
+              </div>
             </div>
           </div>
 
@@ -408,6 +521,78 @@ export default function GameBoard() {
         )}
       </footer>
 
+      {/* End Game Overlay & Stats */}
+      {winner && showStats && (
+        <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-500">
+          <div className="absolute top-10 flex flex-col items-center animate-bounce">
+            <Trophy className="w-16 h-16 text-amber-500 mb-2 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]" />
+            <h1 className={cn("text-4xl font-black uppercase tracking-tighter", teamTextColor[winner === 'assassin' ? currentTurn : winner])}>
+              {winner === 'assassin' ? `${currentTurn} Hit Assassin!` : `${winner} Wins!`}
+            </h1>
+          </div>
+          
+          <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl overflow-hidden mt-10">
+            <div className="bg-slate-800/50 p-4 border-b border-slate-700 flex justify-between items-center">
+              <h3 className="text-sm font-black uppercase tracking-widest text-slate-300 flex items-center gap-2">
+                <BarChart2 className="w-4 h-4 text-emerald-400" /> Match Stats
+              </h3>
+              <button 
+                onClick={() => setShowStats(false)}
+                className="text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1 bg-slate-700/50 px-2 py-1 rounded"
+              >
+                <Eye className="w-3 h-3" /> Peek Board
+              </button>
+            </div>
+            
+            <div className="p-6 grid grid-cols-2 gap-4">
+              <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800 flex flex-col items-center">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Turns</span>
+                <span className="text-2xl font-black text-white">{stats.turns}</span>
+              </div>
+              <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800 flex flex-col items-center">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Clues</span>
+                <span className="text-2xl font-black text-white">{stats.clues}</span>
+              </div>
+              <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800 flex flex-col items-center">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Correct</span>
+                <span className="text-2xl font-black text-emerald-400">{stats.correctGuesses}</span>
+              </div>
+              <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800 flex flex-col items-center">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Wrong</span>
+                <span className="text-2xl font-black text-rose-400">{stats.wrongGuesses}</span>
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-slate-800 flex gap-3">
+              {isHost && (
+                <button 
+                  onClick={handleResetLobby}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl transition-all shadow-lg shadow-emerald-900/20 active:scale-95 flex items-center justify-center gap-2"
+                >
+                  <RefreshCcw className="w-5 h-5" /> Play Again
+                </button>
+              )}
+              <button 
+                onClick={handleLeave}
+                className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2"
+              >
+                <LogOut className="w-5 h-5" /> Leave Room
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Button to show stats back after peaking */}
+      {winner && !showStats && (
+        <button 
+          onClick={() => setShowStats(true)}
+          className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-amber-500 text-amber-950 font-black px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 animate-in slide-in-from-bottom"
+        >
+          <BarChart2 className="w-5 h-5" /> Show Results
+        </button>
+      )}
+
       {/* Modals */}
       <Modal
         isOpen={modalState.isOpen && modalState.type === 'cancel'}
@@ -427,6 +612,96 @@ export default function GameBoard() {
         onConfirm={confirmLeave}
         onCancel={() => setModalState({ isOpen: false, type: null })}
       />
+
+      {/* Mobile Drawer Overlay */}
+      {isMobileMenuOpen && (
+        <div className="lg:hidden fixed inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)} />
+          <div className="relative w-72 max-w-[80vw] bg-slate-900 h-full shadow-2xl border-l border-slate-700 flex flex-col animate-in slide-in-from-right overflow-y-auto">
+            <div className="flex justify-between items-center p-4 border-b border-slate-800">
+              <h2 className="text-sm font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                <Hash className="w-4 h-4" /> Room Info
+              </h2>
+              <button onClick={() => setIsMobileMenuOpen(false)} className="text-slate-400 hover:text-white bg-slate-800 rounded-full p-1 border border-slate-700">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-4 flex flex-col gap-6">
+              <div className="flex flex-col gap-3 bg-slate-800/40 p-3 rounded-xl border border-slate-700/50">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500 font-medium">Room ID</span>
+                  <span className="text-slate-200 font-bold bg-slate-900 px-2 py-0.5 rounded border border-slate-700">{roomName}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500 font-medium">Teams</span>
+                  <span className="text-slate-200 font-bold">{numTeams}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500 font-medium">Total Cards</span>
+                  <span className="text-slate-200 font-bold">{totalCards}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500 font-medium flex items-center gap-1"><ShieldAlert className="w-3.5 h-3.5 text-rose-400" /> Assassins</span>
+                  <span className="text-rose-400 font-bold">{assassinCount}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500 font-medium">Theme</span>
+                  <span className="text-slate-200 font-bold uppercase">{theme}</span>
+                </div>
+                <div className="mt-1 pt-3 border-t border-slate-700/50 flex flex-col gap-3">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-400 font-bold">Neutral Ends Turn</span>
+                    <span className={cn("font-bold px-2 py-1 rounded text-xs uppercase", neutralEndsTurn ? "bg-rose-500/20 text-rose-400" : "bg-emerald-500/20 text-emerald-400")}>
+                      {neutralEndsTurn ? 'Yes' : 'No'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-400 font-bold">Turn Timer</span>
+                    <span className="text-slate-200 font-bold">{turnTimer === 0 ? 'Off' : `${turnTimer}s`}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-400 font-bold">Sound Effects</span>
+                    <span className={cn("font-bold", sfxEnabled ? "text-emerald-400" : "text-slate-500")}>{sfxEnabled ? 'Enabled' : 'Muted'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {players.some(p => p.role === 'spectator') && (
+                <div className="flex flex-col gap-2">
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                    <Users className="w-4 h-4" /> Spectators
+                  </h4>
+                  <div className="flex flex-col gap-2">
+                    {players.filter(p => p.role === 'spectator').map(p => (
+                      <div key={p.id} className="flex justify-between items-center bg-slate-800/80 text-slate-300 px-3 py-2.5 rounded-lg border border-slate-700/50 text-sm">
+                        <span className="truncate">{p.name} {p.id === myPlayerId && <span className="opacity-50 text-[10px]">(You)</span>} {p.isHost && <span className="text-xs text-amber-500 font-bold ml-1">★ Host</span>}</span>
+                        {isHost && p.id !== myPlayerId && (
+                          <div className="flex gap-2 ml-2 shrink-0">
+                            <button onClick={async () => { await usePeerStore.getState().transferHost(p.name, false); setIsMobileMenuOpen(false); }} className="p-1.5 hover:bg-amber-500/20 text-amber-500 bg-amber-500/10 rounded" title="Make Host"><Crown className="w-4 h-4"/></button>
+                            <button onClick={() => { usePeerStore.getState().kickPlayer(p.id); }} className="p-1.5 hover:bg-rose-500/20 text-rose-500 bg-rose-500/10 rounded" title="Kick"><Ban className="w-4 h-4"/></button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="mt-auto p-4 border-t border-slate-800">
+                {isHost && (
+                  <button onClick={() => { setIsMobileMenuOpen(false); handleResetLobby(); }} className="w-full mb-3 px-4 py-3 bg-slate-800 text-slate-300 hover:text-amber-400 border border-slate-700 rounded-xl font-bold flex justify-center items-center gap-2 cursor-pointer shadow-sm">
+                    <RefreshCcw className="w-4 h-4" /> Cancel Game
+                  </button>
+                )}
+                <button onClick={() => { setIsMobileMenuOpen(false); handleLeave(); }} className="w-full px-4 py-3 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-xl font-bold flex justify-center items-center gap-2 cursor-pointer shadow-sm">
+                  <LogOut className="w-4 h-4" /> Leave Room
+                </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
