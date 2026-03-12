@@ -1,4 +1,4 @@
-export type ThemeId = 'pokemon' | 'superheroes' | 'harrypotter' | 'rickandmorty' | 'dogs' | 'countries' | 'digimon' | 'gameofthrones' | 'invizimals' | 'classicwords' | 'classicwords_pt' | 'starwars' | 'onepiece' | 'naruto' | 'animals';
+export type ThemeId = 'pokemon' | 'superheroes' | 'harrypotter' | 'rickandmorty' | 'dogs' | 'countries' | 'digimon' | 'gameofthrones' | 'invizimals' | 'classicwords' | 'classicwords_pt' | 'starwars' | 'onepiece' | 'naruto' | 'animals' | 'leagueoflegends' | 'disney' | 'dota2' | 'harrypotter_spells' | 'lotr' | 'cities' | 'animals_kids' | 'foods' | 'mythology' | 'tech';
 
 export interface ThemeItem {
   id: number;
@@ -293,36 +293,199 @@ export const themes: Record<ThemeId, Theme> = {
   },
   animals: {
     id: 'animals',
-    name: 'Animals',
-    loaderText: 'Gathering creatures...',
-    maxCards: 50,
+    name: 'Animals (EN)',
+    loaderText: 'Going on Safari...',
+    maxCards: 60,
     fetchData: async () => {
-      // Use random fox API + Dog API for mixed animal images
-      const results: ThemeItem[] = [];
-      try {
-        // 25 dogs
-        const dogs = await fetch('https://dog.ceo/api/breeds/image/random/25');
-        const dogData = await dogs.json();
-        dogData.message.forEach((url: string, i: number) => {
-          const match = url.match(/breeds\/([^\/]+)/);
-          results.push({ id: i, name: match ? match[1].replace('-', ' ') : 'Dog', image: url });
-        });
-        // 25 cats
-        const cats = await fetch('https://api.thecatapi.com/v1/images/search?limit=25');
-        const catData = await cats.json();
-        catData.forEach((c: any, i: number) => {
-          results.push({ id: 25 + i, name: `Cat ${i + 1}`, image: c.url });
-        });
-      } catch {
-        // Fallback text-only
-        const animals = ["LION","TIGER","ELEPHANT","GIRAFFE","ZEBRA","PANDA","KOALA","KANGAROO","PENGUIN","EAGLE",
-          "DOLPHIN","WHALE","SHARK","OCTOPUS","JELLYFISH","SEAHORSE","TURTLE","CROCODILE","SNAKE","LIZARD",
-          "WOLF","FOX","BEAR","DEER","RABBIT","SQUIRREL","HEDGEHOG","OWL","PARROT","FLAMINGO",
-          "GORILLA","CHIMPANZEE","ORANGUTAN","LEMUR","BAT","OTTER","SEAL","WALRUS","POLAR BEAR","MOOSE",
-          "CHEETAH","LEOPARD","JAGUAR","LYNX","PANTHER","HYENA","MEERKAT","CAPYBARA","AXOLOTL","PLATYPUS"];
-        return animals.map((name, i) => ({ id: i, name, image: null }));
+      const words = [
+        "LION", "TIGER", "BEAR", "ELEPHANT", "GIRAFFE", "ZEBRA", "MONKEY", "GORILLA", "KANGAROO", "KOALA",
+        "PANDA", "WOLF", "FOX", "DEER", "MOOSE", "RABBIT", "SQUIRREL", "MOUSE", "RAT", "BAT",
+        "EAGLE", "HAWK", "OWL", "PARROT", "PENGUIN", "OSTRICH", "PEACOCK", "SWAN", "DUCK", "GOOSE",
+        "SHARK", "WHALE", "DOLPHIN", "OCTOPUS", "SQUID", "CRAB", "LOBSTER", "STARFISH", "SEAL", "WALRUS",
+        "SNAKE", "LIZARD", "TURTLE", "CROCODILE", "ALLIGATOR", "FROG", "TOAD", "SALAMANDER", "BUTTERFLY", "BEE",
+        "ANT", "SPIDER", "SCORPION", "SNAIL", "WORM", "HORSE", "COW", "PIG", "SHEEP", "GOAT",
+        "DOG", "CAT", "CHICKEN", "TURKEY", "DONKEY", "CAMEL", "LLAMA", "ALPACA", "CHEETAH", "LEOPARD",
+        "PANTHER", "JAGUAR", "RHINO", "HIPPO", "SLOTH", "ARMADILLO", "PORCUPINE", "HEDGEHOG", "BEAVER", "OTTER",
+        "BADGER", "WEASEL", "FERRET", "MINK", "RACCOON", "SKUNK", "MEERKAT", "MONGOOSE", "LEMUR", "IGUANA"
+      ];
+      return words.map((w, i) => ({ id: i, name: w, image: null }));
+    }
+  },
+  leagueoflegends: {
+    id: 'leagueoflegends',
+    name: 'League of Legends',
+    loaderText: 'Welcome to Summoner\'s Rift...',
+    maxCards: 100,
+    fetchData: async () => {
+      const versionRes = await fetch('https://ddragon.leagueoflegends.com/api/versions.json');
+      const versions = await versionRes.json();
+      const latestVersion = versions[0];
+      const res = await fetch(`https://ddragon.leagueoflegends.com/cdn/${latestVersion}/data/en_US/champion.json`);
+      const data = await res.json();
+      const champions = Object.values(data.data) as any[];
+      const shuffled = champions.sort(() => 0.5 - Math.random()).slice(0, 100);
+      return shuffled.map((c, i) => ({
+        id: i,
+        name: c.name,
+        image: `https://ddragon.leagueoflegends.com/cdn/${latestVersion}/img/champion/${c.image.full}`
+      }));
+    }
+  },
+  disney: {
+    id: 'disney',
+    name: 'Disney Characters',
+    loaderText: 'Sprinkling Pixie Dust...',
+    maxCards: 60,
+    fetchData: async () => {
+      let chars: any[] = [];
+      const pages = [1, 2, 3, 4, 5].sort(() => 0.5 - Math.random()).slice(0, 3);
+      for (const p of pages) {
+        try {
+          const res = await fetch(`https://api.disneyapi.dev/character?page=${p}&pageSize=50`);
+          const data = await res.json();
+          chars = chars.concat(data.data.filter((c: any) => c.imageUrl));
+        } catch {}
       }
-      return results.sort(() => 0.5 - Math.random()).slice(0, 50);
+      const shuffled = chars.sort(() => 0.5 - Math.random()).slice(0, 60);
+      return shuffled.map((c, i) => ({
+        id: i,
+        name: c.name,
+        image: c.imageUrl
+      }));
+    }
+  },
+  dota2: {
+    id: 'dota2',
+    name: 'Dota 2 Heroes',
+    loaderText: 'Defending the Ancients...',
+    maxCards: 60,
+    fetchData: async () => {
+      const res = await fetch('https://api.opendota.com/api/heroes');
+      const data = await res.json();
+      const shuffled = data.sort(() => 0.5 - Math.random()).slice(0, 60);
+      return shuffled.map((h: any, i: number) => ({ id: i, name: h.localized_name, image: null }));
+    }
+  },
+  harrypotter_spells: {
+    id: 'harrypotter_spells',
+    name: 'Harry Potter Spells',
+    loaderText: 'Lumos...',
+    maxCards: 60,
+    fetchData: async () => {
+      const res = await fetch('https://hp-api.onrender.com/api/spells');
+      const data = await res.json();
+      const shuffled = data.sort(() => 0.5 - Math.random()).slice(0, 60);
+      return shuffled.map((s: any, i: number) => ({ id: i, name: s.name, image: null }));
+    }
+  },
+  lotr: {
+    id: 'lotr',
+    name: 'Lord of the Rings',
+    loaderText: 'Entering Mordor...',
+    maxCards: 55,
+    fetchData: async () => {
+      const words = [
+        "FRODO", "SAM", "GANDALF", "ARAGORN", "LEGOLAS", "GIMLI", "BOROMIR", "MERRY", "PIPPIN", "GOLLUM",
+        "SAURON", "SARUMAN", "ELROND", "GALADRIEL", "ARWEN", "EOWYN", "EOMER", "THEODEN", "FARAMIR", "BILBO",
+        "TREEBEARD", "SMAUG", "RING", "HOBBIT", "SHIRE", "RIVENDELL", "MORDOR", "GONDOR", "ROHAN", "ISENGARD",
+        "ORC", "GOBLIN", "TROLL", "BALROG", "ELF", "DWARF", "ENT", "WIZARD", "NAZGUL", "EAGLE",
+        "STING", "MITHRIL", "ANDURIL", "PALANTIR", "MINAS TIRITH", "HELM'S DEEP", "MOUNT DOOM", "FELLOWSHIP", "TWO TOWERS", "RETURN OF THE KING",
+        "SHADOWFAX", "WITCH-KING", "BREE", "PRANCING PONY", "LORIEN"
+      ];
+      return words.sort(() => 0.5 - Math.random()).map((w, i) => ({ id: i, name: w, image: null }));
+    }
+  },
+  cities: {
+    id: 'cities',
+    name: 'World Cities',
+    loaderText: 'Boarding Flights...',
+    maxCards: 80,
+    fetchData: async () => {
+      const words = [
+        "PARIS", "LONDON", "NEW YORK", "TOKYO", "ROME", "BERLIN", "MADRID", "BEIJING", "MOSCOW", "SYDNEY",
+        "CAIRO", "RIO DE JANEIRO", "BUENOS AIRES", "CAPE TOWN", "MUMBAI", "DUBAI", "SINGAPORE", "HONG KONG", "BANGKOK", "SEOUL",
+        "TORONTO", "LOS ANGELES", "CHICAGO", "MEXICO CITY", "LIMA", "BOGOTA", "SANTIAGO", "CARACAS", "HAVANA", "LISBON",
+        "BARCELONA", "AMSTERDAM", "VIENNA", "PRAGUE", "BUDAPEST", "WARSAW", "STOCKHOLM", "OSLO", "COPENHAGEN", "HELSINKI",
+        "ATHENS", "ISTANBUL", "JERUSALEM", "DELHI", "JAKARTA", "MANILA", "KUALA LUMPUR", "MELBOURNE", "AUCKLAND", "JOHANNESBURG",
+        "NAIROBI", "LAGOS", "DAKAR", "CASABLANCA", "ALGIERS", "TEHRAN", "RIYADH", "BAGHDAD", "KABUL", "ISLAMABAD",
+        "COLOMBO", "KATHMANDU", "HANOI", "TAIPEI", "SHANGHAI", "OSAKA", "KYOTO", "BRISBANE", "PERTH", "VANCOUVER",
+        "MONTREAL", "MIAMI", "SAN FRANCISCO", "SEATTLE", "BOSTON", "WASHINGTON", "PHILADELPHIA", "DALLAS", "HOUSTON", "ATLANTA"
+      ];
+      return words.sort(() => 0.5 - Math.random()).map((w, i) => ({ id: i, name: w, image: null }));
+    }
+  },
+  animals_kids: {
+    id: 'animals_kids',
+    name: 'Animais (PT)',
+    loaderText: 'A ir para o Safari...',
+    maxCards: 60,
+    fetchData: async () => {
+      const words = [
+        "LEÃO", "TIGRE", "URSO", "ELEFANTE", "GIRAFA", "ZEBRA", "MACACO", "GORILA", "CANGURU", "COALA",
+        "PANDA", "LOBO", "RAPOSA", "VEADO", "ALCE", "COELHO", "ESQUILO", "RATO", "MORCEGO", "ÁGUIA",
+        "FALCÃO", "CORUJA", "PAPAGAIO", "PINGUIM", "AVESTRUZ", "PAVÃO", "CISNE", "PATO", "GANSO", "TUBARÃO",
+        "BALEIA", "GOLFINHO", "POLVO", "LULA", "CARANGUEJO", "LAGOSTA", "FOCA", "MORSA", "COBRA", "LAGARTO",
+        "TARTARUGA", "CROCODILO", "JACARÉ", "SAPO", "RÃ", "SALAMANDRA", "BORBOLETA", "ABELHA", "FORMIGA", "ARANHA",
+        "ESCORPIÃO", "CARACOL", "MINHOCA", "CAVALO", "VACA", "PORCO", "OVELHA", "CABRA", "CÃO", "GATO"
+      ];
+      return words.sort(() => 0.5 - Math.random()).map((w, i) => ({ id: i, name: w, image: null }));
+    }
+  },
+  foods: {
+    id: 'foods',
+    name: 'Food & Cooking',
+    loaderText: 'Cooking Dinner...',
+    maxCards: 80,
+    fetchData: async () => {
+      const words = [
+        "PIZZA", "BURGER", "PASTA", "SUSHI", "MESA", "CHAIR", "APPLE", "BANANA", "ORANGE", "GRAPE",
+        "STRAWBERRY", "WATERMELON", "PINEAPPLE", "MANGO", "PEACH", "CHERRY", "TOMATO", "POTATO", "ONION", "GARLIC",
+        "CARROT", "BROCCOLI", "SPINACH", "MUSHROOM", "CORN", "BREAD", "CHEESE", "MILK", "BUTTER", "EGG",
+        "CHICKEN", "BEEF", "PORK", "FISH", "SHRIMP", "RICE", "BEANS", "CEREAL", "OATMEAL", "PANCAKE",
+        "WAFFLE", "SYRUP", "HONEY", "JAM", "PEANUT BUTTER", "JELLY", "CHOCOLATE", "VANILLA", "ICE CREAM", "COOKIES",
+        "CAKE", "PIE", "CANDY", "GUM", "SODA", "WATER", "JUICE", "TEA", "COFFEE", "WINE",
+        "BEER", "VODKA", "RUM", "WHISKEY", "SALT", "PEPPER", "SUGAR", "FLOUR", "OIL", "VINEGAR",
+        "MUSTARD", "KETCHUP", "MAYO", "SOY SAUCE", "HOT SAUCE", "SALAD", "SOUP", "SANDWICH", "TACO", "BURRITO"
+      ];
+      return words.sort(() => 0.5 - Math.random()).map((w, i) => ({ id: i, name: w, image: null }));
+    }
+  },
+  mythology: {
+    id: 'mythology',
+    name: 'Mythology',
+    loaderText: 'Consulting Oracles...',
+    maxCards: 75,
+    fetchData: async () => {
+      const words = [
+        "ZEUS", "POSEIDON", "HADES", "HERA", "ATHENA", "ARES", "APOLLO", "ARTEMIS", "APHRODITE", "HERMES",
+        "HEPHAESTUS", "DIONYSUS", "PERSEPHONE", "DEMETER", "HESTIA", "ACHILLES", "HERCULES", "THESEUS", "PERSEUS", "ODYSSEUS",
+        "MEDUSA", "MINOTAUR", "HYDRA", "CERBERUS", "PEGASUS", "CENTAUR", "CYCLOPS", "SIREN", "SPHINX", "GRIFFIN",
+        "ODIN", "THOR", "LOKI", "FREYA", "BALDER", "TYR", "HEIMDALL", "FENRIR", "JORMUNGANDR", "VALKYRIE",
+        "ASGARD", "VALHALLA", "RAGNAROK", "YGGDRASIL", "MJOLNIR", "RA", "OSIRIS", "ISIS", "HORUS", "ANUBIS",
+        "THOTH", "SET", "BASTET", "SOBEK", "PTAH", "PHARAOH", "PYRAMID", "MUMMY", "SCARAB", "NILE",
+        "NIMROD", "GILGAMESH", "ENKIDU", "ISHTAR", "MARDUK", "TIAMAT", "BABA YAGA", "KITSUNE", "TENGU", "ONI",
+        "DRAGON", "PHOENIX", "UNICORN", "MERMAID", "KRAKEN"
+      ];
+      return words.sort(() => 0.5 - Math.random()).map((w, i) => ({ id: i, name: w, image: null }));
+    }
+  },
+  tech: {
+    id: 'tech',
+    name: 'Tech & Code',
+    loaderText: 'Compiling Code...',
+    maxCards: 80,
+    fetchData: async () => {
+      const words = [
+        "COMPUTER", "LAPTOP", "PHONE", "TABLET", "KEYBOARD", "MOUSE", "MONITOR", "SCREEN", "PRINTER", "SCANNER",
+        "SERVER", "DATABASE", "CLOUD", "NETWORK", "ROUTER", "MODEM", "WIFI", "INTERNET", "WEBSITE", "DOMAIN",
+        "CODE", "SOFTWARE", "HARDWARE", "BUG", "VIRUS", "HACKER", "PASSWORD", "ENCRYPTION", "BINARY", "ALGORITHM",
+        "PYTHON", "JAVASCRIPT", "JAVA", "C++", "HTML", "CSS", "PHP", "SQL", "RUBY", "SWIFT",
+        "REACT", "ANGULAR", "VUE", "NODE", "EXPRESS", "DJANGO", "SPRING", "LARAVEL", "GIT", "GITHUB",
+        "DOCKER", "KUBERNETES", "AWS", "AZURE", "LINUX", "WINDOWS", "MACOS", "IOS", "ANDROID", "APP",
+        "API", "JSON", "XML", "HTTP", "REST", "GRAPHQL", "VARIABLE", "FUNCTION", "CLASS", "OBJECT",
+        "ARRAY", "STRING", "INTEGER", "BOOLEAN", "LOOP", "IF", "ELSE", "SWITCH", "DEBUGGER", "COMPILER"
+      ];
+      return words.sort(() => 0.5 - Math.random()).map((w, i) => ({ id: i, name: w, image: null }));
     }
   }
 };

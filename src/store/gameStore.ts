@@ -58,6 +58,7 @@ interface GameState {
   firstTeam: TeamId | 'random';
   neutralEndsTurn: boolean;
   turnTimer: number; // 0 for disabled, or seconds (e.g. 60, 90, 120)
+  offlineVerbalClues: boolean; // Fast mode for offline: skip clue typing
 
   // Active Game State
   cards: Card[];
@@ -84,7 +85,7 @@ interface GameState {
   // Actions
   joinLobby: (roomName: string, isHost: boolean, myId: string) => void;
   updatePlayers: (players: Player[]) => void;
-  updateSettings: (settings: Partial<Pick<GameState, 'theme' | 'numTeams' | 'totalCards' | 'assassinCount' | 'firstTeam' | 'cardsPerTeam' | 'neutralEndsTurn' | 'turnTimer'>>) => void;
+  updateSettings: (settings: Partial<Pick<GameState, 'theme' | 'numTeams' | 'totalCards' | 'assassinCount' | 'firstTeam' | 'cardsPerTeam' | 'neutralEndsTurn' | 'turnTimer' | 'offlineVerbalClues'>>) => void;
   toggleSFX: () => void;
   startGame: (cards: Card[], firstTurn: TeamId) => void;
   giveClue: (word: string, count: number) => void;
@@ -114,6 +115,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   firstTeam: 'random',
   neutralEndsTurn: true,
   turnTimer: 0,
+  offlineVerbalClues: false,
 
   cards: [],
   remaining: { red: 0, blue: 0, green: 0, yellow: 0, neutral: 0, assassin: 0 },
@@ -161,10 +163,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       cards,
       remaining,
       currentTurn: firstTurn,
-      turnPhase: 'clue',
+      turnPhase: state.offlineVerbalClues ? 'guess' : 'clue',
       turnEndTime: state.turnTimer > 0 ? Date.now() + state.turnTimer * 1000 : null,
-      clue: null,
-      guessesLeft: 0,
+      clue: state.offlineVerbalClues ? { word: 'Verbal Clue', count: 99 } : null,
+      guessesLeft: state.offlineVerbalClues ? 99 : 0,
       winner: null,
       stats: {
         turns: 1,
@@ -214,8 +216,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     else if (card.role !== state.currentTurn && card.role !== 'neutral' || 
              (card.role === 'neutral' && state.neutralEndsTurn) || 
              nextGuesses === 0) {
-      nextPhase = 'clue';
-      nextGuesses = 0;
+      if (state.offlineVerbalClues) {
+        nextPhase = 'guess';
+        nextGuesses = 99;
+      } else {
+        nextPhase = 'clue';
+        nextGuesses = 0;
+      }
       // Cycle turn
       const activeTeams: TeamId[] = state.numTeams === 2 ? ['red', 'blue'] : 
                                     state.numTeams === 3 ? ['red', 'blue', 'green'] : 
@@ -268,17 +275,31 @@ export const useGameStore = create<GameState>((set, get) => ({
   }),
 
   endTurn: () => set((state) => {
+    if (state.winner) return state;
+    
     const activeTeams: TeamId[] = state.numTeams === 2 ? ['red', 'blue'] : 
                                   state.numTeams === 3 ? ['red', 'blue', 'green'] : 
                                   ['red', 'blue', 'green', 'yellow'];
     const turnIdx = activeTeams.indexOf(state.currentTurn);
     const nextTurn = activeTeams[(turnIdx + 1) % activeTeams.length];
-    return {
-      turnPhase: 'clue',
-      currentTurn: nextTurn,
-      turnEndTime: state.turnTimer > 0 ? Date.now() + state.turnTimer * 1000 : null,
-      guessesLeft: 0,
+
+    if (state.offlineVerbalClues) {
+      return { 
+        currentTurn: nextTurn, 
+        turnPhase: 'guess', 
+        clue: { word: 'Verbal Clue', count: 99 },
+        guessesLeft: 99,
+        turnEndTime: state.turnTimer > 0 ? Date.now() + state.turnTimer * 1000 : null,
+        stats: { ...state.stats, turns: state.stats.turns + 1 }
+      };
+    }
+
+    return { 
+      currentTurn: nextTurn, 
+      turnPhase: 'clue', 
       clue: null,
+      guessesLeft: 0,
+      turnEndTime: state.turnTimer > 0 ? Date.now() + state.turnTimer * 1000 : null,
       stats: { ...state.stats, turns: state.stats.turns + 1 }
     };
   }),
