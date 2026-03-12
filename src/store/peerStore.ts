@@ -95,7 +95,7 @@ export const usePeerStore = create<PeerState>((set, get) => {
             type: 'JOIN_ACCEPTED', 
             state: { 
               players: newPlayers, 
-              settings: { theme: gameStore.theme, numTeams: gameStore.numTeams, totalCards: gameStore.totalCards, assassinCount: gameStore.assassinCount, firstTeam: gameStore.firstTeam, cardsPerTeam: gameStore.cardsPerTeam, neutralEndsTurn: gameStore.neutralEndsTurn },
+              settings: { theme: gameStore.theme, numTeams: gameStore.numTeams, totalCards: gameStore.totalCards, assassinCount: gameStore.assassinCount, firstTeam: gameStore.firstTeam, cardsPerTeam: gameStore.cardsPerTeam, neutralEndsTurn: gameStore.neutralEndsTurn, turnTimer: gameStore.turnTimer },
               cards: gameStore.cards,
               turnPhase: gameStore.turnPhase,
               currentTurn: gameStore.currentTurn,
@@ -158,7 +158,7 @@ export const usePeerStore = create<PeerState>((set, get) => {
         gameStore.giveClue(action.clue, action.count);
         if (isHost) {
           const s = useGameStore.getState();
-          get().broadcastAction({ type: 'SYNC_STATE', state: { turnPhase: s.turnPhase, clue: s.clue, guessesLeft: s.guessesLeft } });
+          get().broadcastAction({ type: 'SYNC_STATE', state: { turnPhase: s.turnPhase, clue: s.clue, guessesLeft: s.guessesLeft, turnEndTime: s.turnEndTime } });
         }
         break;
 
@@ -174,7 +174,8 @@ export const usePeerStore = create<PeerState>((set, get) => {
               turnPhase: newState.turnPhase,
               currentTurn: newState.currentTurn,
               guessesLeft: newState.guessesLeft,
-              winner: newState.winner
+              winner: newState.winner,
+              turnEndTime: newState.turnEndTime
             } 
           });
         }
@@ -194,7 +195,7 @@ export const usePeerStore = create<PeerState>((set, get) => {
         gameStore.endTurn();
         if (isHost) {
           const s = useGameStore.getState();
-          get().broadcastAction({ type: 'SYNC_STATE', state: { turnPhase: s.turnPhase, currentTurn: s.currentTurn, guessesLeft: s.guessesLeft, clue: s.clue } });
+          get().broadcastAction({ type: 'SYNC_STATE', state: { turnPhase: s.turnPhase, currentTurn: s.currentTurn, guessesLeft: s.guessesLeft, clue: s.clue, turnEndTime: s.turnEndTime } });
         }
         break;
 

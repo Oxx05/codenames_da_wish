@@ -12,6 +12,7 @@ export default function App() {
   const disconnect = usePeerStore(s => s.disconnect);
   const isHost = useGameStore(s => s.isHost);
   const playersCount = useGameStore(s => s.players.length);
+  const loadingMessage = useGameStore(s => s.loadingMessage);
 
   // Mobile Back-Button Trap
   useEffect(() => {
@@ -46,7 +47,7 @@ export default function App() {
   
   if (mpStatus === 'lobby') return <LobbyScreen />;
   if (mpStatus === 'playing') return <GameBoard />;
-  if (mpStatus === 'connecting') return <LoadingScreen message={useGameStore(s => s.loadingMessage)} />;
+  if (mpStatus === 'connecting') return <LoadingScreen message={loadingMessage} />;
 
   return <ConnectionMenu />;
 }

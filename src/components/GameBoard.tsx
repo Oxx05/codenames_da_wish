@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useGameStore, TeamId, Card } from "@/store/gameStore";
 import { usePeerStore } from "@/store/peerStore";
 import { LogOut, RefreshCcw, Hand, Flag, Users, Ban, Crown, Hash, ShieldAlert, Menu, X, Clock, Volume2, VolumeX, Trophy, BarChart2, Eye } from "lucide-react";
@@ -106,42 +106,29 @@ export default function GameBoard() {
     return () => clearInterval(interval);
   }, [turnEndTime, turnTimer, winner, isHost, broadcastAction]);
 
-  // Sound Effects Triggers
-  useEffect(() => {
-    if (!sfxEnabled) return;
-    
-    // Find the last revealed card
-    const revealedCount = cards.filter(c => c.revealed).length;
-    if (revealedCount === 0) return;
-
-    // Use a ref or simple state to track previous count to avoid playing on initial load
-    // But since this is a functional component, we can just check if it was a user action
-    // Actually, a simpler way is to check the roles of newly revealed cards
-  }, [cards, sfxEnabled]);
-
-  // We need to track the previous cards to know WHICH one was revealed
-  const [prevCards, setPrevCards] = useState(cards);
+  // Sound Effects: Track previously revealed cards with a ref
+  const prevCardsRef = useRef(cards);
   
   useEffect(() => {
-    if (!sfxEnabled || prevCards.length === 0) {
-      setPrevCards(cards);
+    if (!sfxEnabled || prevCardsRef.current.length === 0) {
+      prevCardsRef.current = cards;
       return;
     }
 
-    const revealedIdx = cards.findIndex((c, i) => c.revealed && !prevCards[i]?.revealed);
+    const revealedIdx = cards.findIndex((c, i) => c.revealed && !prevCardsRef.current[i]?.revealed);
     if (revealedIdx !== -1) {
       const card = cards[revealedIdx];
       if (card.role === 'assassin') SFX.assassin();
       else if (card.role === 'neutral') SFX.neutral();
       else SFX.correct();
     }
-    setPrevCards(cards);
+    prevCardsRef.current = cards;
   }, [cards, sfxEnabled]);
 
   useEffect(() => {
-    if (winner && sfxEnabled) {
-      SFX.win();
+    if (winner) {
       setShowStats(true);
+      if (sfxEnabled) SFX.win();
     }
   }, [winner, sfxEnabled]);
 

@@ -263,7 +263,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   resetToLobby: () => set({
     mpStatus: 'lobby',
     winner: null,
-    cards: []
+    cards: [],
+    turnEndTime: null,
+    turnPhase: 'clue',
+    clue: null,
+    guessesLeft: 0,
   }),
 
   disconnect: () => set({
