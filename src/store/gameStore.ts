@@ -28,6 +28,7 @@ export interface Clue {
 interface GameState {
   // Multiplayer Connection State
   mpStatus: 'disconnected' | 'connecting' | 'lobby' | 'playing';
+  loadingMessage: string;
   isHost: boolean;
   roomName: string | null;
   players: Player[];
@@ -40,6 +41,7 @@ interface GameState {
   assassinCount: number;
   cardsPerTeam: Record<string, number>;
   firstTeam: TeamId | 'random';
+  neutralEndsTurn: boolean;
 
   // Active Game State
   cards: Card[];
@@ -53,7 +55,7 @@ interface GameState {
   // Actions
   joinLobby: (roomName: string, isHost: boolean, myId: string) => void;
   updatePlayers: (players: Player[]) => void;
-  updateSettings: (settings: Partial<Pick<GameState, 'theme' | 'numTeams' | 'totalCards' | 'assassinCount' | 'firstTeam' | 'cardsPerTeam'>>) => void;
+  updateSettings: (settings: Partial<Pick<GameState, 'theme' | 'numTeams' | 'totalCards' | 'assassinCount' | 'firstTeam' | 'cardsPerTeam' | 'neutralEndsTurn'>>) => void;
   startGame: (cards: Card[], firstTurn: TeamId) => void;
   giveClue: (word: string, count: number) => void;
   revealCard: (index: number) => void;
@@ -67,6 +69,7 @@ interface GameState {
 
 export const useGameStore = create<GameState>((set, get) => ({
   mpStatus: 'disconnected',
+  loadingMessage: 'Loading game...',
   isHost: false,
   roomName: null,
   players: [],
@@ -78,6 +81,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   assassinCount: 1,
   cardsPerTeam: { red: 0, blue: 0, green: 0, yellow: 0 }, // 0 means auto-calculate
   firstTeam: 'random',
+  neutralEndsTurn: true,
 
   cards: [],
   remaining: { red: 0, blue: 0, green: 0, yellow: 0, neutral: 0, assassin: 0 },
@@ -147,8 +151,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     else if (newRemaining[card.role] === 0 && card.role !== 'neutral') {
       winner = card.role;
     }
-    // Wrong guess or neutral - end turn immediately
-    else if (card.role !== state.currentTurn || nextGuesses === 0) {
+    // Wrong guess or neutral (if enabled) - end turn immediately
+    else if (card.role !== state.currentTurn && card.role !== 'neutral' || 
+             (card.role === 'neutral' && state.neutralEndsTurn) || 
+             nextGuesses === 0) {
       nextPhase = 'clue';
       nextGuesses = 0;
       // Cycle turn

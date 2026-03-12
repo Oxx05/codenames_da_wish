@@ -12,16 +12,16 @@ export default function App() {
   
   if (mpStatus === 'lobby') return <LobbyScreen />;
   if (mpStatus === 'playing') return <GameBoard />;
-  if (mpStatus === 'connecting') return <LoadingScreen />;
+  if (mpStatus === 'connecting') return <LoadingScreen message={useGameStore(s => s.loadingMessage)} />;
 
   return <ConnectionMenu />;
 }
 
-function LoadingScreen() {
+function LoadingScreen({ message = "Loading game..." }: { message?: string }) {
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-6">
       <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-      <p className="text-slate-300 text-lg font-semibold animate-pulse">Loading game...</p>
+      <p className="text-slate-300 text-lg font-semibold animate-pulse">{message}</p>
     </div>
   );
 }

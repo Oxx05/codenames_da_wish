@@ -4,11 +4,11 @@ import { useGameStore, Player, TeamId, PlayerRole } from "@/store/gameStore";
 import { usePeerStore } from "@/store/peerStore";
 import { useState } from "react";
 import { themes, ThemeId } from "@/lib/themes";
-import { Users, Settings, LogOut, Play, AlertTriangle, Dice5, Dices } from "lucide-react";
+import { Users, Settings, LogOut, Play, AlertTriangle, Dice5, Dices, Ban, Crown } from "lucide-react";
 
 export default function LobbyScreen() {
-  const { isHost, roomName, players, myPlayerId, theme, numTeams, totalCards, assassinCount, cardsPerTeam, firstTeam } = useGameStore();
-  const { disconnect, broadcastAction, sendActionToHost } = usePeerStore();
+  const { isHost, roomName, players, myPlayerId, theme, numTeams, totalCards, assassinCount, cardsPerTeam, firstTeam, neutralEndsTurn } = useGameStore();
+  const { disconnect, broadcastAction, sendActionToHost, kickPlayer, transferHost } = usePeerStore();
 
   const me = players.find(p => p.id === myPlayerId);
   const myTeam = me?.team || 'red';
@@ -20,7 +20,14 @@ export default function LobbyScreen() {
   const maxAvailable = selectedThemeInfo?.maxCards || 60;
   
   const totalRequired = (numTeams * 1) + 1 + assassinCount; // Minimum cards required: 1 per team + 1 starting + assassins
-  const isValidGame = totalCards <= maxAvailable && totalCards >= totalRequired && assassinCount < totalCards && numTeams >= 2 && numTeams <= 4;
+  
+  const teamNames = numTeams === 2 ? ['red', 'blue'] : numTeams === 3 ? ['red', 'blue', 'green'] : ['red', 'blue', 'green', 'yellow'];
+  const hasSpiesAndOps = teamNames.every(t => 
+    players.some(p => p.team === t && p.role === 'spymaster') &&
+    players.some(p => p.team === t && p.role === 'operative')
+  );
+
+  const isValidGame = totalCards <= maxAvailable && totalCards >= totalRequired && assassinCount < totalCards && numTeams >= 2 && numTeams <= 4 && hasSpiesAndOps;
 
   const [isFlipping, setIsFlipping] = useState(false);
   const [tempValues, setTempValues] = useState<Record<string, string>>({});
@@ -34,10 +41,13 @@ export default function LobbyScreen() {
     
     // Check if the target team already has a spymaster
     const targetTeamHasSpymaster = players.some(p => p.team === team && p.role === 'spymaster' && p.id !== myPlayerId);
+    const targetTeamIsEmpty = !players.some(p => p.team === team && p.id !== myPlayerId);
     
     let finalRole = requestedRole;
     if (finalRole === 'spymaster' && targetTeamHasSpymaster) {
       finalRole = 'operative'; // Auto-downgrade if Spymaster slot is taken
+    } else if (targetTeamIsEmpty && team !== 'neutral') {
+      finalRole = 'spymaster'; // Auto-assign Spymaster if team is empty
     }
 
     // If host, update directly and broadcast. Otherwise, send to host.
@@ -59,7 +69,9 @@ export default function LobbyScreen() {
     
     try {
       const allItems = await themeApi.fetchData();
-      const selected = allItems.slice(0, totalCards);
+      // Shuffle the items before slicing so we don't always get the first alphabetical ones
+      const shuffledItems = [...allItems].sort(() => 0.5 - Math.random());
+      const selected = shuffledItems.slice(0, totalCards);
       
       // Fill roles array — use per-team overrides if set, otherwise auto-calculate
       const roles: TeamId[] = [];
@@ -289,6 +301,29 @@ export default function LobbyScreen() {
                   )}
                 </div>
 
+                {/* Neutral Ends Turn Toggle */}
+                <div className="pt-4 border-t border-slate-700/50 mt-2 flex justify-between items-center">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Neutral Tile</label>
+                    <span className="text-[10px] text-slate-500">Ends turn when guessed?</span>
+                  </div>
+                  {isHost ? (
+                    <button 
+                      onClick={() => {
+                        useGameStore.getState().updateSettings({ neutralEndsTurn: !neutralEndsTurn });
+                        broadcastAction({ type: 'UPDATE_SETTINGS', settings: { neutralEndsTurn: !neutralEndsTurn } } as any);
+                      }}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-900 ${neutralEndsTurn ? 'bg-emerald-500' : 'bg-slate-700'}`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${neutralEndsTurn ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                  ) : (
+                    <div className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1 text-xs font-bold uppercase text-slate-300">
+                      {neutralEndsTurn ? 'Yes' : 'No'}
+                    </div>
+                  )}
+                </div>
+
                 {/* Per-Team Card Counts (Advanced) */}
                 {isHost && (
                   <div className="pt-3 border-t border-slate-700/50 mt-2">
@@ -333,6 +368,7 @@ export default function LobbyScreen() {
                       {totalCards < totalRequired && <p>Need more cards! At least {totalRequired} required for {numTeams} teams and {assassinCount} assassins.</p>}
                       {assassinCount >= totalCards && <p>Too many assassins, not enough agents!</p>}
                       {(numTeams < 2 || numTeams > 4) && <p>Teams must be between 2 and 4.</p>}
+                      {!hasSpiesAndOps && <p>Every active team must have at least 1 Spymaster and 1 Operative.</p>}
                     </div>
                   </div>
                 )}
@@ -357,14 +393,17 @@ export default function LobbyScreen() {
                   </div>
                 )}
                 
-                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2 mt-4 pt-2 border-t border-slate-700/50">My Action Role</h3>
+                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2 mt-4 pt-4 border-t border-slate-700/50">My Action Role</h3>
                 <div className="flex gap-2">
                   <button disabled={myRole === 'spectator'} onClick={() => handleUpdatePlayer(myTeam, 'operative')} className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all shadow-md ${myRole === 'operative' ? 'bg-emerald-600 text-white shadow-emerald-900/50 scale-105' : myRole === 'spectator' ? 'bg-slate-800/50 text-slate-600 border border-slate-800 cursor-not-allowed' : 'bg-slate-800 border border-slate-600 hover:bg-slate-700 text-slate-300 cursor-pointer'}`}>🕵️ Operative</button>
                   <button disabled={myRole === 'spectator' || (hasSpymaster && myRole !== 'spymaster')} onClick={() => handleUpdatePlayer(myTeam, 'spymaster')} className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all shadow-md ${myRole === 'spymaster' ? 'bg-amber-600 text-white shadow-amber-900/50 cursor-pointer scale-105' : (hasSpymaster || myRole === 'spectator') ? 'bg-slate-800/50 text-slate-600 border border-slate-800 cursor-not-allowed' : 'bg-slate-800 border border-slate-600 hover:bg-slate-700 text-slate-300 cursor-pointer'}`}>🧠 Spymaster {hasSpymaster && myRole !== 'spymaster' && '(Full)'}</button>
-                  <button onClick={() => handleUpdatePlayer('neutral', 'spectator')} className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all shadow-md cursor-pointer ${myRole === 'spectator' ? 'bg-slate-400 text-slate-900 shadow-slate-900/50 scale-105' : 'bg-slate-800 border border-slate-600 hover:bg-slate-700 text-slate-300'}`}>👁️ Spectator</button>
+                </div>
+                
+                <div className="mt-4 pt-4 border-t border-slate-700/50">
+                  <button onClick={() => handleUpdatePlayer('neutral', 'spectator')} className={`w-full py-3 rounded-xl text-sm font-bold uppercase tracking-wider transition-all shadow-md cursor-pointer ${myRole === 'spectator' ? 'bg-indigo-600 text-white shadow-indigo-900/50 scale-102 border border-indigo-500' : 'bg-slate-800/80 border border-slate-600 hover:bg-indigo-900/40 hover:border-indigo-500/50 text-slate-300'}`}>👁️ Join as Spectator</button>
                 </div>
                 {myRole === 'spectator' && (
-                  <div className="mt-2 text-center text-xs font-semibold text-amber-500 animate-pulse bg-amber-500/10 p-2 rounded-lg border border-amber-500/20">
+                  <div className="mt-3 text-center text-xs font-semibold text-amber-500 animate-pulse bg-amber-500/10 p-2.5 rounded-lg border border-amber-500/20">
                     ☝️ To start playing, select a Team Color above!
                   </div>
                 )}
@@ -387,11 +426,19 @@ export default function LobbyScreen() {
                 </h4>
                 <div className="space-y-2">
                   {players.filter(p => p.team === 'red').map(p => (
-                    <div key={p.id} className="flex justify-between items-center bg-slate-900/50 p-3 rounded-lg text-sm shadow-sm border border-slate-700/30">
-                      <span className={p.id === myPlayerId ? "font-bold text-white flex items-center gap-1" : "text-slate-300 flex items-center gap-1"}>
-                        {p.name} {p.id === myPlayerId && <span className="text-[10px] bg-slate-700 px-1 rounded">(You)</span>} {p.isHost && <span className="text-xs text-yellow-500 font-bold">★ Host</span>}
-                      </span>
-                      <span className={`text-xs px-2.5 py-1 rounded-full font-bold shadow-sm ${p.role === 'spymaster' ? 'bg-amber-500 text-amber-950' : 'bg-slate-700 text-slate-200'}`}>
+                    <div key={p.id} className="group flex justify-between items-center bg-slate-900/50 p-3 rounded-lg text-sm shadow-sm border border-slate-700/30">
+                      <div className="flex flex-col">
+                        <span className={p.id === myPlayerId ? "font-bold text-white flex items-center gap-1" : "text-slate-300 flex items-center gap-1"}>
+                          {p.name} {p.id === myPlayerId && <span className="text-[10px] bg-slate-700 px-1 rounded">(You)</span>} {p.isHost && <span className="text-xs text-yellow-500 font-bold">★ Host</span>}
+                        </span>
+                        {isHost && p.id !== myPlayerId && (
+                           <div className="hidden group-hover:flex gap-2 mt-2">
+                             <button onClick={() => transferHost(p.name, false)} className="text-[10px] flex items-center gap-1 bg-amber-500/20 hover:bg-amber-500/40 text-amber-400 px-2 py-1 rounded" title="Make Host"><Crown className="w-3 h-3"/> Host</button>
+                             <button onClick={() => kickPlayer(p.id)} className="text-[10px] flex items-center gap-1 bg-rose-500/20 hover:bg-rose-500/40 text-rose-400 px-2 py-1 rounded" title="Kick"><Ban className="w-3 h-3"/> Kick</button>
+                           </div>
+                        )}
+                      </div>
+                      <span className={`text-xs px-2.5 py-1 rounded-full font-bold shadow-sm h-fit ${p.role === 'spymaster' ? 'bg-amber-500 text-amber-950' : 'bg-slate-700 text-slate-200'}`}>
                         {p.role === 'spymaster' ? '🧠 Spymaster' : '🕵️ Operative'}
                       </span>
                     </div>
@@ -410,11 +457,19 @@ export default function LobbyScreen() {
                 </h4>
                 <div className="space-y-2">
                   {players.filter(p => p.team === 'blue').map(p => (
-                    <div key={p.id} className="flex justify-between items-center bg-slate-900/50 p-3 rounded-lg text-sm shadow-sm border border-slate-700/30">
-                      <span className={p.id === myPlayerId ? "font-bold text-white flex items-center gap-1" : "text-slate-300 flex items-center gap-1"}>
-                        {p.name} {p.id === myPlayerId && <span className="text-[10px] bg-slate-700 px-1 rounded">(You)</span>} {p.isHost && <span className="text-xs text-yellow-500 font-bold">★ Host</span>}
-                      </span>
-                      <span className={`text-xs px-2.5 py-1 rounded-full font-bold shadow-sm ${p.role === 'spymaster' ? 'bg-amber-500 text-amber-950' : 'bg-slate-700 text-slate-200'}`}>
+                    <div key={p.id} className="group flex justify-between items-center bg-slate-900/50 p-3 rounded-lg text-sm shadow-sm border border-slate-700/30">
+                      <div className="flex flex-col">
+                        <span className={p.id === myPlayerId ? "font-bold text-white flex items-center gap-1" : "text-slate-300 flex items-center gap-1"}>
+                          {p.name} {p.id === myPlayerId && <span className="text-[10px] bg-slate-700 px-1 rounded">(You)</span>} {p.isHost && <span className="text-xs text-yellow-500 font-bold">★ Host</span>}
+                        </span>
+                        {isHost && p.id !== myPlayerId && (
+                           <div className="hidden group-hover:flex gap-2 mt-2">
+                             <button onClick={() => transferHost(p.name, false)} className="text-[10px] flex items-center gap-1 bg-amber-500/20 hover:bg-amber-500/40 text-amber-400 px-2 py-1 rounded" title="Make Host"><Crown className="w-3 h-3"/> Host</button>
+                             <button onClick={() => kickPlayer(p.id)} className="text-[10px] flex items-center gap-1 bg-rose-500/20 hover:bg-rose-500/40 text-rose-400 px-2 py-1 rounded" title="Kick"><Ban className="w-3 h-3"/> Kick</button>
+                           </div>
+                        )}
+                      </div>
+                      <span className={`text-xs px-2.5 py-1 rounded-full font-bold shadow-sm h-fit ${p.role === 'spymaster' ? 'bg-amber-500 text-amber-950' : 'bg-slate-700 text-slate-200'}`}>
                         {p.role === 'spymaster' ? '🧠 Spymaster' : '🕵️ Operative'}
                       </span>
                     </div>
@@ -434,11 +489,19 @@ export default function LobbyScreen() {
                   </h4>
                   <div className="space-y-2">
                     {players.filter(p => p.team === 'green').map(p => (
-                      <div key={p.id} className="flex justify-between items-center bg-slate-900/50 p-3 rounded-lg text-sm shadow-sm border border-slate-700/30">
-                        <span className={p.id === myPlayerId ? "font-bold text-white flex items-center gap-1" : "text-slate-300 flex items-center gap-1"}>
-                          {p.name} {p.id === myPlayerId && <span className="text-[10px] bg-slate-700 px-1 rounded">(You)</span>} {p.isHost && <span className="text-xs text-yellow-500 font-bold">★ Host</span>}
-                        </span>
-                        <span className={`text-xs px-2.5 py-1 rounded-full font-bold shadow-sm ${p.role === 'spymaster' ? 'bg-amber-500 text-amber-950' : 'bg-slate-700 text-slate-200'}`}>
+                      <div key={p.id} className="group flex justify-between items-center bg-slate-900/50 p-3 rounded-lg text-sm shadow-sm border border-slate-700/30">
+                        <div className="flex flex-col">
+                          <span className={p.id === myPlayerId ? "font-bold text-white flex items-center gap-1" : "text-slate-300 flex items-center gap-1"}>
+                            {p.name} {p.id === myPlayerId && <span className="text-[10px] bg-slate-700 px-1 rounded">(You)</span>} {p.isHost && <span className="text-xs text-yellow-500 font-bold">★ Host</span>}
+                          </span>
+                          {isHost && p.id !== myPlayerId && (
+                             <div className="hidden group-hover:flex gap-2 mt-2">
+                               <button onClick={() => transferHost(p.name, false)} className="text-[10px] flex items-center gap-1 bg-amber-500/20 hover:bg-amber-500/40 text-amber-400 px-2 py-1 rounded" title="Make Host"><Crown className="w-3 h-3"/> Host</button>
+                               <button onClick={() => kickPlayer(p.id)} className="text-[10px] flex items-center gap-1 bg-rose-500/20 hover:bg-rose-500/40 text-rose-400 px-2 py-1 rounded" title="Kick"><Ban className="w-3 h-3"/> Kick</button>
+                             </div>
+                          )}
+                        </div>
+                        <span className={`text-xs px-2.5 py-1 rounded-full font-bold shadow-sm h-fit ${p.role === 'spymaster' ? 'bg-amber-500 text-amber-950' : 'bg-slate-700 text-slate-200'}`}>
                           {p.role === 'spymaster' ? '🧠 Spymaster' : '🕵️ Operative'}
                         </span>
                       </div>
@@ -459,11 +522,19 @@ export default function LobbyScreen() {
                   </h4>
                   <div className="space-y-2">
                     {players.filter(p => p.team === 'yellow').map(p => (
-                      <div key={p.id} className="flex justify-between items-center bg-slate-900/50 p-3 rounded-lg text-sm shadow-sm border border-slate-700/30">
-                        <span className={p.id === myPlayerId ? "font-bold text-white flex items-center gap-1" : "text-slate-300 flex items-center gap-1"}>
-                          {p.name} {p.id === myPlayerId && <span className="text-[10px] bg-slate-700 px-1 rounded">(You)</span>} {p.isHost && <span className="text-xs text-yellow-500 font-bold">★ Host</span>}
-                        </span>
-                        <span className={`text-xs px-2.5 py-1 rounded-full font-bold shadow-sm ${p.role === 'spymaster' ? 'bg-amber-500 text-amber-950' : 'bg-slate-700 text-slate-200'}`}>
+                      <div key={p.id} className="group flex justify-between items-center bg-slate-900/50 p-3 rounded-lg text-sm shadow-sm border border-slate-700/30">
+                        <div className="flex flex-col">
+                          <span className={p.id === myPlayerId ? "font-bold text-white flex items-center gap-1" : "text-slate-300 flex items-center gap-1"}>
+                            {p.name} {p.id === myPlayerId && <span className="text-[10px] bg-slate-700 px-1 rounded">(You)</span>} {p.isHost && <span className="text-xs text-yellow-500 font-bold">★ Host</span>}
+                          </span>
+                          {isHost && p.id !== myPlayerId && (
+                             <div className="hidden group-hover:flex gap-2 mt-2">
+                               <button onClick={() => transferHost(p.name, false)} className="text-[10px] flex items-center gap-1 bg-amber-500/20 hover:bg-amber-500/40 text-amber-400 px-2 py-1 rounded" title="Make Host"><Crown className="w-3 h-3"/> Host</button>
+                               <button onClick={() => kickPlayer(p.id)} className="text-[10px] flex items-center gap-1 bg-rose-500/20 hover:bg-rose-500/40 text-rose-400 px-2 py-1 rounded" title="Kick"><Ban className="w-3 h-3"/> Kick</button>
+                             </div>
+                          )}
+                        </div>
+                        <span className={`text-xs px-2.5 py-1 rounded-full font-bold shadow-sm h-fit ${p.role === 'spymaster' ? 'bg-amber-500 text-amber-950' : 'bg-slate-700 text-slate-200'}`}>
                           {p.role === 'spymaster' ? '🧠 Spymaster' : '🕵️ Operative'}
                         </span>
                       </div>

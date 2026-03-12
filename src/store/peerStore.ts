@@ -18,7 +18,9 @@ type GameAction =
   | { type: 'SET_MARK'; index: number; team: TeamId; remove: boolean }
   | { type: 'END_TURN' }
   | { type: 'END_GAME'; winner: string }
-  | { type: 'RESET_LOBBY' };
+  | { type: 'RESET_LOBBY' }
+  | { type: 'KICK' }
+  | { type: 'TRANSFER_HOST'; newHostName: string };
 
 interface PeerState {
   peer: Peer | null;
@@ -27,9 +29,11 @@ interface PeerState {
   
   initializeHost: (roomName: string, password?: string) => Promise<string>;
   joinRoom: (roomName: string, playerName: string, password?: string) => Promise<{ success: boolean; reason?: string }>;
-  disconnect: () => void;
+  disconnect: (options?: { skipTransferHost?: boolean; keepGameState?: boolean }) => void;
   broadcastAction: (action: GameAction) => void;
   sendActionToHost: (action: GameAction) => void;
+  kickPlayer: (peerId: string) => void;
+  transferHost: (newHostName: string, isLeaving: boolean) => void;
 }
 
 export const usePeerStore = create<PeerState>((set, get) => {
@@ -49,27 +53,41 @@ export const usePeerStore = create<PeerState>((set, get) => {
             return;
           }
           
-          // Reconnection logic: if name is taken, kick the old ghost instead of rejecting
+          let newPlayers = gameStore.players;
+          let newPlayer = { ...action.player };
           const existingPlayerIndex = gameStore.players.findIndex(p => p.name.toLowerCase() === action.player.name.toLowerCase());
+
           if (existingPlayerIndex !== -1) {
             const ghost = gameStore.players[existingPlayerIndex];
             const ghostConn = get().connections.find(c => c.peer === ghost.id);
             if (ghostConn) ghostConn.close(); // Clean up old connection
             
-            // Remove the ghost player gracefully
-            gameStore.updatePlayers(gameStore.players.filter(p => p.id !== ghost.id));
-          }
-          
-          let newPlayer = { ...action.player };
-          
-          if (gameStore.mpStatus !== 'lobby') {
-            // Force mid-game joiners to be spectators
-            newPlayer.team = 'neutral';
-            newPlayer.role = 'spectator';
+            // Inherit old state
+            newPlayer.team = ghost.team;
+            newPlayer.role = ghost.role;
+            
+            // Remove the ghost player from the list before appending the new one
+            newPlayers = newPlayers.filter(p => p.id !== ghost.id);
+          } else {
+            if (gameStore.mpStatus !== 'lobby') {
+              // Force mid-game joiners to be spectators
+              newPlayer.team = 'neutral';
+              newPlayer.role = 'spectator';
+            } else {
+              // Balance teams dynamically
+              const activeTeams = ['red', 'blue', 'green', 'yellow'].slice(0, gameStore.numTeams) as TeamId[];
+              const teamCounts = activeTeams.map(t => ({ team: t, count: gameStore.players.filter(p => p.team === t).length }));
+              teamCounts.sort((a, b) => a.count - b.count);
+              const targetTeam = teamCounts[0].team;
+              
+              const hasSpymaster = gameStore.players.some(p => p.team === targetTeam && p.role === 'spymaster');
+              newPlayer.team = targetTeam;
+              newPlayer.role = hasSpymaster ? 'operative' : 'spymaster';
+            }
           }
           
           // Accept and add player
-          const newPlayers = [...gameStore.players, newPlayer];
+          newPlayers = [...newPlayers, newPlayer];
           gameStore.updatePlayers(newPlayers);
           
           // Send full state to the new guest
@@ -77,7 +95,7 @@ export const usePeerStore = create<PeerState>((set, get) => {
             type: 'JOIN_ACCEPTED', 
             state: { 
               players: newPlayers, 
-              settings: { theme: gameStore.theme, numTeams: gameStore.numTeams, totalCards: gameStore.totalCards, assassinCount: gameStore.assassinCount, firstTeam: gameStore.firstTeam },
+              settings: { theme: gameStore.theme, numTeams: gameStore.numTeams, totalCards: gameStore.totalCards, assassinCount: gameStore.assassinCount, firstTeam: gameStore.firstTeam, cardsPerTeam: gameStore.cardsPerTeam, neutralEndsTurn: gameStore.neutralEndsTurn },
               cards: gameStore.cards,
               turnPhase: gameStore.turnPhase,
               currentTurn: gameStore.currentTurn,
@@ -138,8 +156,10 @@ export const usePeerStore = create<PeerState>((set, get) => {
 
       case 'GIVE_CLUE':
         gameStore.giveClue(action.clue, action.count);
-        if (isHost) get().broadcastAction(action);
-        else get().sendActionToHost(action);
+        if (isHost) {
+          const s = useGameStore.getState();
+          get().broadcastAction({ type: 'SYNC_STATE', state: { turnPhase: s.turnPhase, clue: s.clue, guessesLeft: s.guessesLeft } });
+        }
         break;
 
       case 'REVEAL_CARD':
@@ -172,14 +192,17 @@ export const usePeerStore = create<PeerState>((set, get) => {
 
       case 'END_TURN':
         gameStore.endTurn();
-        if (isHost) get().broadcastAction(action);
-        else get().sendActionToHost(action);
+        if (isHost) {
+          const s = useGameStore.getState();
+          get().broadcastAction({ type: 'SYNC_STATE', state: { turnPhase: s.turnPhase, currentTurn: s.currentTurn, guessesLeft: s.guessesLeft, clue: s.clue } });
+        }
         break;
 
       case 'END_GAME':
         gameStore.endGame(action.winner as any);
-        if (isHost) get().broadcastAction(action);
-        else get().sendActionToHost(action);
+        if (isHost) {
+          get().broadcastAction({ type: 'SYNC_STATE', state: { winner: action.winner } });
+        }
         break;
 
       case 'RESET_LOBBY':
@@ -187,6 +210,56 @@ export const usePeerStore = create<PeerState>((set, get) => {
           gameStore.resetToLobby();
         }
         break;
+
+      case 'KICK':
+        if (!isHost) {
+          alert("You have been kicked from the room.");
+          get().disconnect({ skipTransferHost: true });
+        }
+        break;
+
+      case 'TRANSFER_HOST': {
+        const myName = gameStore.players.find(p => p.id === gameStore.myPlayerId)?.name;
+        const currentRoomName = gameStore.roomName;
+        const currentPassword = expectedPassword;
+        const currentState = { ...gameStore }; // Capture prior to disconnecting
+
+        if (myName === action.newHostName) {
+          // I am the new host
+          // Wait briefly, reset connection, and initialize as host
+          useGameStore.getState().applyFullState({ mpStatus: 'connecting', loadingMessage: 'Initializing as new Host...' });
+          get().disconnect({ skipTransferHost: true, keepGameState: true });
+          
+          setTimeout(() => {
+            get().initializeHost(currentRoomName!, currentPassword).then(id => {
+              // Restore state and mark as host
+              useGameStore.getState().applyFullState({
+                ...currentState,
+                isHost: true,
+                mpStatus: currentState.mpStatus,
+                myPlayerId: id,
+                players: currentState.players.map(p => p.name === myName ? { ...p, id, isHost: true } : p).filter(p => p.name === myName)
+              });
+            });
+          }, 1500);
+
+        } else {
+          // I am a regular guest — wait for new host to spin up, then rejoin
+          if (!isHost) {
+            useGameStore.getState().applyFullState({ mpStatus: 'connecting', loadingMessage: 'Reconnecting to new Host...' });
+            get().disconnect({ skipTransferHost: true, keepGameState: true });
+            setTimeout(() => {
+              get().joinRoom(currentRoomName!, myName!, currentPassword).then(res => {
+                if (!res.success) {
+                  useGameStore.getState().disconnect();
+                  alert("Failed to reconnect to the new host. Please refresh.");
+                }
+              });
+            }, 3000);
+          }
+        }
+        break;
+      }
     }
   };
 
@@ -269,6 +342,7 @@ export const usePeerStore = create<PeerState>((set, get) => {
     joinRoom: async (roomName: string, playerName: string, password?: string): Promise<{ success: boolean; reason?: string }> => {
       const { Peer } = await import('peerjs');
       const hostId = ROOM_PREFIX + roomName;
+      expectedPassword = password || '';
 
       return new Promise((resolve) => {
         const peer = new Peer();
@@ -318,9 +392,20 @@ export const usePeerStore = create<PeerState>((set, get) => {
       });
     },
 
-    disconnect: () => {
+    disconnect: (options = {}) => {
       const { peer, connections, hostConn } = get();
-      const roomName = useGameStore.getState().roomName;
+      const gs = useGameStore.getState();
+      
+      // Auto-transfer host on leave
+      if (gs.isHost && gs.players.length > 1 && !options.skipTransferHost) {
+        const otherPlayer = gs.players.find(p => p.id !== gs.myPlayerId);
+        if (otherPlayer) {
+          get().transferHost(otherPlayer.name, true);
+          return; // transferHost handles the actual tear down
+        }
+      }
+
+      const roomName = gs.roomName;
       
       connections.forEach(c => c.close());
       if (hostConn) hostConn.close();
@@ -331,7 +416,7 @@ export const usePeerStore = create<PeerState>((set, get) => {
         pingInterval = null;
       }
 
-      if (useGameStore.getState().isHost && roomName) {
+      if (!options.keepGameState && useGameStore.getState().isHost && roomName) {
         fetch(`/api/rooms?name=${roomName}`, { method: 'DELETE', keepalive: true }).catch(() => {});
       }
       
@@ -340,7 +425,9 @@ export const usePeerStore = create<PeerState>((set, get) => {
       }
       
       set({ peer: null, connections: [], hostConn: null });
-      useGameStore.getState().disconnect();
+      if (!options.keepGameState) {
+        useGameStore.getState().disconnect();
+      }
     },
 
     broadcastAction: (action: GameAction) => {
@@ -356,6 +443,53 @@ export const usePeerStore = create<PeerState>((set, get) => {
       const { hostConn } = get();
       if (hostConn && hostConn.open) {
         hostConn.send(action);
+      }
+    },
+
+    kickPlayer: (peerId: string) => {
+      const { connections, broadcastAction } = get();
+      const gs = useGameStore.getState();
+      if (!gs.isHost) return;
+
+      const conn = connections.find(c => c.peer === peerId);
+      if (conn) {
+        // Send specific kick action to that one connection
+        conn.send({ type: 'KICK' });
+        // Close it shortly after
+        setTimeout(() => conn.close(), 500);
+      }
+    },
+
+    transferHost: (newHostName: string, isLeaving: boolean) => {
+      const { broadcastAction, disconnect } = get();
+      const gs = useGameStore.getState();
+      if (!gs.isHost) return;
+
+      // Broadcast the transfer action to everyone
+      broadcastAction({ type: 'TRANSFER_HOST', newHostName });
+
+      // If leaving completely, just disconnect without trying to rejoin
+      if (isLeaving) {
+        setTimeout(() => disconnect({ skipTransferHost: true }), 500);
+      } else {
+        // The old host becomes a guest
+        const myName = gs.players.find(p => p.id === gs.myPlayerId)?.name;
+        const currentRoomName = gs.roomName;
+        const currentPassword = expectedPassword;
+        
+        useGameStore.getState().applyFullState({ mpStatus: 'connecting', loadingMessage: 'Passing the Crown...' });
+        setTimeout(() => {
+          disconnect({ skipTransferHost: true, keepGameState: true });
+          
+          setTimeout(() => {
+            get().joinRoom(currentRoomName!, myName!, currentPassword).then(res => {
+               if (!res.success) {
+                 useGameStore.getState().disconnect();
+                 alert("Failed to rejoin as guest");
+               }
+            });
+          }, 3000);
+        }, 500);
       }
     }
   };

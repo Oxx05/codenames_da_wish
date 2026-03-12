@@ -3,14 +3,15 @@
 import React, { useEffect, useState } from 'react';
 import { useGameStore, TeamId, Card } from "@/store/gameStore";
 import { usePeerStore } from "@/store/peerStore";
-import { LogOut, RefreshCcw, Hand, Flag, Users } from "lucide-react";
+import { LogOut, RefreshCcw, Hand, Flag, Users, Ban, Crown, Hash, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Modal } from './Modal';
 
 export default function GameBoard() {
   const { 
     myPlayerId, players, roomName, isHost,
-    cards, remaining, currentTurn, turnPhase, clue, guessesLeft, winner, numTeams 
+    cards, remaining, currentTurn, turnPhase, clue, guessesLeft, winner, numTeams,
+    theme, totalCards, assassinCount, neutralEndsTurn
   } = useGameStore();
   const { disconnect, broadcastAction, sendActionToHost } = usePeerStore();
 
@@ -161,9 +162,11 @@ export default function GameBoard() {
           )}
           <span className={cn(
             "text-[8px] font-bold uppercase px-1.5 py-0.5 rounded flex items-center gap-0.5",
-            myRole === 'spymaster' ? 'bg-purple-600/30 text-purple-300' : 
-            myRole === 'spectator' ? 'bg-slate-700 text-slate-400' :
-            'bg-emerald-600/30 text-emerald-300'
+            myTeam === 'red' ? 'bg-red-600/30 text-red-300' :
+            myTeam === 'blue' ? 'bg-blue-600/30 text-blue-300' :
+            myTeam === 'green' ? 'bg-green-600/30 text-green-300' :
+            myTeam === 'yellow' ? 'bg-yellow-600/30 text-yellow-300' :
+            'bg-slate-700 text-slate-400'
           )}>
             {myRole === 'spymaster' ? '🔍 spy' : myRole === 'spectator' ? '👁 spec' : '🎯 op'}
           </span>
@@ -223,8 +226,11 @@ export default function GameBoard() {
         <div className="flex items-center gap-3">
           <span className={cn(
             "text-xs font-bold uppercase px-3 py-1 rounded-lg border",
-            myRole === 'spymaster' ? 'bg-purple-600/20 text-purple-300 border-purple-500/30' : 
-            'bg-emerald-600/20 text-emerald-300 border-emerald-500/30'
+            myTeam === 'red' ? 'bg-red-600/20 text-red-300 border-red-500/30' :
+            myTeam === 'blue' ? 'bg-blue-600/20 text-blue-300 border-blue-500/30' :
+            myTeam === 'green' ? 'bg-green-600/20 text-green-300 border-green-500/30' :
+            myTeam === 'yellow' ? 'bg-yellow-600/20 text-yellow-300 border-yellow-500/30' :
+            'bg-slate-600/20 text-slate-300 border-slate-500/30'
           )}>
             {myTeam} {myRole}
           </span>
@@ -243,9 +249,11 @@ export default function GameBoard() {
       <main className="flex-1 min-h-0 w-full flex flex-row items-stretch overflow-hidden relative">
         
         {/* Left Side Panel (Desktop Only) */}
-        <aside className="hidden lg:flex flex-col w-56 xl:w-64 bg-slate-900/50 border-r border-slate-800/80 p-4 gap-6 shrink-0 z-20 overflow-y-auto">
+        <aside className="hidden lg:flex flex-col w-56 xl:w-64 bg-slate-900/50 border-r border-slate-800/80 p-4 gap-6 shrink-0 z-20 overflow-y-auto custom-scrollbar">
+          <TeamPanel teamId="red" />
           <TeamPanel teamId="blue" />
           {numTeams >= 3 && <TeamPanel teamId="green" />}
+          {numTeams >= 4 && <TeamPanel teamId="yellow" />}
         </aside>
 
         {/* Center Grid Area — THIS IS THE KEY: The grid must fill ALL remaining space */}
@@ -272,18 +280,56 @@ export default function GameBoard() {
           </div>
         </div>
 
-        {/* Right Side Panel (Desktop Only) */}
-        <aside className="hidden lg:flex flex-col w-56 xl:w-64 bg-slate-900/50 border-l border-slate-800/80 p-4 gap-6 shrink-0 z-20 overflow-y-auto">
-          <TeamPanel teamId="red" />
-          {numTeams >= 4 && <TeamPanel teamId="yellow" />}
+        {/* Right Side Panel: Room Info & Spectators (Desktop Only) */}
+        <aside className="hidden lg:flex flex-col w-56 xl:w-64 bg-slate-900/50 border-l border-slate-800/80 p-4 gap-4 shrink-0 z-20 overflow-y-auto custom-scrollbar">
+          <div className="flex flex-col gap-2 bg-slate-800/40 p-3 rounded-xl border border-slate-700/50">
+            <h3 className="text-xs font-black text-slate-300 uppercase tracking-widest mb-1 flex items-center gap-2">
+              <Hash className="w-4 h-4 text-emerald-400" /> Room Info
+            </h3>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-500 font-medium">Room ID</span>
+              <span className="text-slate-200 font-bold bg-slate-900 px-2 py-0.5 rounded border border-slate-700">{roomName}</span>
+            </div>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-500 font-medium">Teams</span>
+              <span className="text-slate-200 font-bold">{numTeams}</span>
+            </div>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-500 font-medium">Total Cards</span>
+              <span className="text-slate-200 font-bold">{totalCards}</span>
+            </div>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-500 font-medium flex items-center gap-1"><ShieldAlert className="w-3 h-3 text-rose-400" /> Assassins</span>
+              <span className="text-rose-400 font-bold">{assassinCount}</span>
+            </div>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-500 font-medium">Theme</span>
+              <span className="text-slate-200 font-bold uppercase">{theme}</span>
+            </div>
+            <div className="mt-2 pt-2 border-t border-slate-700/50 flex justify-between items-center text-xs">
+              <span className="text-slate-400 font-bold">Neutral Ends Turn</span>
+              <span className={cn("font-bold px-1.5 py-0.5 rounded text-[10px] uppercase", neutralEndsTurn ? "bg-rose-500/20 text-rose-400" : "bg-emerald-500/20 text-emerald-400")}>
+                {neutralEndsTurn ? 'Yes' : 'No'}
+              </span>
+            </div>
+          </div>
+
           {players.some(p => p.role === 'spectator') && (
             <div className="mt-auto pt-6 border-t border-slate-800/50">
               <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-2">
                 <Users className="w-3 h-3" /> Spectators
               </h4>
-              <div className="flex flex-wrap gap-1">
+              <div className="flex flex-col gap-1">
                 {players.filter(p => p.role === 'spectator').map(p => (
-                  <span key={p.id} className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700/50">{p.name}</span>
+                  <div key={p.id} className="group flex justify-between items-center bg-slate-800/80 text-slate-300 px-2 py-1.5 rounded border border-slate-700/50 text-xs">
+                    <span className="truncate">{p.name} {p.id === myPlayerId && <span className="opacity-50 text-[10px]">(You)</span>} {p.isHost && <span className="text-[10px] text-amber-500 font-bold ml-1">★ Host</span>}</span>
+                    {isHost && p.id !== myPlayerId && (
+                      <div className="hidden group-hover:flex gap-1 shrink-0 ml-2">
+                        <button onClick={() => usePeerStore.getState().transferHost(p.name, false)} className="p-1 hover:bg-amber-500/20 text-amber-500 rounded" title="Make Host"><Crown className="w-3 h-3"/></button>
+                        <button onClick={() => usePeerStore.getState().kickPlayer(p.id)} className="p-1 hover:bg-rose-500/20 text-rose-500 rounded" title="Kick"><Ban className="w-3 h-3"/></button>
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>
@@ -306,7 +352,7 @@ export default function GameBoard() {
               maxLength={20}
             />
             <input 
-              type="number" min={0} max={9}
+              type="number" min={0} max={cards.length}
               value={clueCount}
               onChange={e => setClueCount(parseInt(e.target.value) || 0)}
               className="w-10 sm:w-14 bg-slate-800 border border-slate-700 text-white px-1 py-1.5 sm:py-2 rounded-lg outline-none focus:border-emerald-500 font-bold text-center text-xs sm:text-sm"
@@ -338,9 +384,12 @@ export default function GameBoard() {
 
         {/* Desktop controls hint */}
         {myRole === 'operative' && (
-          <div className="hidden lg:flex gap-3 items-center text-slate-500 text-[10px] uppercase ml-4">
-            <span><kbd className="px-1 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-300">LC</kbd> Reveal</span>
-            <span><kbd className="px-1 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-300">RC</kbd> Mark</span>
+          <div className="hidden lg:flex gap-4 items-center ml-auto">
+            <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700 shadow-sm text-xs font-bold uppercase text-slate-300">
+              <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-md border border-emerald-500/30 font-mono shadow-inner shadow-emerald-500/10">LC</kbd> Reveal</span>
+              <span className="text-slate-600">/</span>
+              <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded-md border border-amber-500/30 font-mono shadow-inner shadow-amber-500/10">RC</kbd> Mark</span>
+            </div>
           </div>
         )}
 
@@ -384,7 +433,8 @@ export default function GameBoard() {
 
 // Subcomponent: Team Side Panel (Desktop only)
 function TeamPanel({ teamId }: { teamId: TeamId }) {
-  const { players, remaining, currentTurn, winner } = useGameStore();
+  const { players, remaining, currentTurn, winner, isHost, myPlayerId } = useGameStore();
+  const { kickPlayer, transferHost } = usePeerStore();
   const teamPlayers = players.filter(p => p.team === teamId);
   const spymaster = teamPlayers.find(p => p.role === 'spymaster');
   const operatives = teamPlayers.filter(p => p.role === 'operative');
@@ -409,9 +459,20 @@ function TeamPanel({ teamId }: { teamId: TeamId }) {
       </div>
       <div className={cn("border rounded-xl p-2 flex flex-col gap-1.5", colors.light, colors.border)}>
         <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest pl-1">Spymaster</span>
-        <div className="bg-slate-900/80 p-2 rounded-lg text-xs font-bold border border-slate-700/50 flex items-center gap-2">
+        <div className="bg-slate-900/80 p-2 rounded-lg text-xs font-bold border border-slate-700/50 flex flex-col gap-2">
           {spymaster ? (
-            <><div className={cn("w-2 h-2 rounded-full", colors.bg)} /><span className="truncate">{spymaster.name}</span></>
+            <div className="group flex justify-between items-center w-full">
+              <div className="flex items-center gap-2 truncate">
+                <div className={cn("w-2 h-2 rounded-full shrink-0", colors.bg)} />
+                <span className="truncate">{spymaster.name} {spymaster.id === myPlayerId && <span className="opacity-50 font-normal">(You)</span>} {spymaster.isHost && <span className="text-[10px] text-amber-500 font-bold ml-1">★ Host</span>}</span>
+              </div>
+              {isHost && spymaster.id !== myPlayerId && (
+                <div className="hidden group-hover:flex gap-1 shrink-0 ml-2">
+                  <button onClick={() => transferHost(spymaster.name, false)} className="p-1 hover:bg-amber-500/20 text-amber-500 rounded" title="Make Host"><Crown className="w-3 h-3"/></button>
+                  <button onClick={() => kickPlayer(spymaster.id)} className="p-1 hover:bg-rose-500/20 text-rose-500 rounded" title="Kick"><Ban className="w-3 h-3"/></button>
+                </div>
+              )}
+            </div>
           ) : (
             <span className="text-slate-600 italic">None</span>
           )}
@@ -420,9 +481,17 @@ function TeamPanel({ teamId }: { teamId: TeamId }) {
       <div className="flex flex-col gap-1">
         <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest pl-1">Operatives</span>
         {operatives.map(p => (
-          <div key={p.id} className="bg-slate-900/40 p-2 rounded-lg text-[11px] border border-slate-700/30 flex items-center gap-2">
-            <div className={cn("w-1.5 h-1.5 rounded-full", colors.bg, "opacity-70")} />
-            <span className="text-slate-300 truncate">{p.name}</span>
+          <div key={p.id} className="group bg-slate-900/40 p-2 rounded-lg text-[11px] border border-slate-700/30 flex justify-between items-center">
+            <div className="flex items-center gap-2 truncate">
+              <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", colors.bg, "opacity-70")} />
+              <span className="text-slate-300 truncate">{p.name} {p.id === myPlayerId && <span className="opacity-50">(You)</span>} {p.isHost && <span className="text-[10px] text-amber-500 font-bold ml-1">★ Host</span>}</span>
+            </div>
+            {isHost && p.id !== myPlayerId && (
+              <div className="hidden group-hover:flex gap-1 ml-2 shrink-0">
+                <button onClick={() => transferHost(p.name, false)} className="p-1 hover:bg-amber-500/20 text-amber-500 rounded" title="Make Host"><Crown className="w-3 h-3"/></button>
+                <button onClick={() => kickPlayer(p.id)} className="p-1 hover:bg-rose-500/20 text-rose-500 rounded" title="Kick"><Ban className="w-3 h-3"/></button>
+              </div>
+            )}
           </div>
         ))}
         {operatives.length === 0 && <span className="text-[10px] text-slate-700 italic pl-1">Empty</span>}
@@ -447,7 +516,7 @@ function CardItem({ card, isSpymaster, onClick, onContextMenu, playable, markabl
     green: 'bg-green-600 border-green-500',
     yellow: 'bg-yellow-600 border-yellow-500',
     neutral: 'bg-stone-300 border-stone-200 text-slate-800',
-    assassin: 'bg-slate-900 border-slate-800 text-white',
+    assassin: 'bg-black border-slate-700 text-white',
   } as any;
 
   const calculateFontSize = (text: string, isMain: boolean) => {
