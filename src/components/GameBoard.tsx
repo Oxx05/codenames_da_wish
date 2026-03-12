@@ -508,24 +508,24 @@ export default function GameBoard() {
         
         {/* Spymaster Clue Input */}
         {iAmActiveSpymaster && (
-          <form onSubmit={handleGiveClue} className="flex gap-1 sm:gap-2 items-center w-full max-w-lg">
+          <form onSubmit={handleGiveClue} className="flex gap-1 sm:gap-2 items-center w-full max-w-lg h-9 sm:h-11">
             <input 
               type="text" 
               value={clueWord}
               onChange={e => setClueWord(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s-]/g, ''))}
               placeholder="CLUE" 
-              className="flex-1 min-w-0 bg-slate-800 border border-slate-700 text-white px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg outline-none focus:border-emerald-500 font-bold uppercase text-xs sm:text-sm"
+              className="flex-1 min-w-0 h-full bg-slate-800 border border-slate-700 text-white px-2 sm:px-3 rounded-lg outline-none focus:border-emerald-500 font-bold uppercase text-xs sm:text-sm"
               maxLength={20}
             />
             <input 
               type="number" min={0} max={cards.length}
               value={clueCount}
               onChange={e => setClueCount(parseInt(e.target.value) || 0)}
-              className="w-10 sm:w-14 bg-slate-800 border border-slate-700 text-white px-1 py-1.5 sm:py-2 rounded-lg outline-none focus:border-emerald-500 font-bold text-center text-xs sm:text-sm"
+              className="w-12 sm:w-16 h-full bg-slate-800 border border-slate-700 text-white px-1 rounded-lg outline-none focus:border-emerald-500 font-bold text-center text-xs sm:text-sm"
             />
             <button 
               type="submit" disabled={!clueWord.trim()} 
-              className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg font-black uppercase text-[10px] sm:text-xs shrink-0"
+              className="h-full bg-emerald-600 hover:bg-emerald-500 text-white px-3 sm:px-5 rounded-lg font-black uppercase text-[10px] sm:text-xs shrink-0 cursor-pointer disabled:opacity-50 flex flex-col items-center justify-center leading-none"
             >
               GIVE
             </button>
@@ -534,10 +534,10 @@ export default function GameBoard() {
 
         {/* Clue Display */}
         {turnPhase === 'guess' && clue && (
-          <div className="flex gap-2 sm:gap-3 items-center">
+          <div className="flex gap-2 sm:gap-3 items-center h-9 sm:h-11">
             <span className="hidden sm:inline text-slate-400 text-xs font-bold uppercase">Clue:</span>
-            <span className="text-sm sm:text-lg font-black text-white bg-slate-800 px-3 py-1 rounded-lg uppercase tracking-wider border border-slate-700">{clue.word}</span>
-            <span className="text-sm sm:text-lg font-black text-emerald-400 bg-slate-800 px-2 py-1 rounded-lg border border-slate-700">{clue.count}</span>
+            <span className="h-full flex items-center justify-center text-sm sm:text-lg font-black text-white bg-slate-800 px-4 rounded-lg uppercase tracking-wider border border-slate-700 leading-none">{clue.word}</span>
+            <span className="h-full flex items-center justify-center text-sm sm:text-lg font-black text-emerald-400 bg-slate-800 px-3 rounded-lg border border-slate-700 leading-none">{clue.count}</span>
           </div>
         )}
 

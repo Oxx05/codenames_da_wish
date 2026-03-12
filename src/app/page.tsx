@@ -3,9 +3,11 @@
 import { useState, useEffect } from "react";
 import { useGameStore } from "@/store/gameStore";
 import { usePeerStore } from "@/store/peerStore";
-import { Gamepad2, AlertCircle, Play, LogIn, PlusCircle, Users, RefreshCw } from "lucide-react";
+import { Gamepad2, AlertCircle, Play, LogIn, PlusCircle, Users, RefreshCw, WifiOff } from "lucide-react";
 import LobbyScreen from "@/components/LobbyScreen";
 import GameBoard from "@/components/GameBoard";
+import OfflineSetup from "@/components/OfflineSetup";
+import OfflineBoard from "@/components/OfflineBoard";
 
 export default function App() {
   const mpStatus = useGameStore(s => s.mpStatus);
@@ -13,17 +15,35 @@ export default function App() {
   const isHost = useGameStore(s => s.isHost);
   const playersCount = useGameStore(s => s.players.length);
   const loadingMessage = useGameStore(s => s.loadingMessage);
+  const roomName = useGameStore(s => s.roomName);
+
+  const [showOfflineSetup, setShowOfflineSetup] = useState(false);
 
   // Mobile Back-Button Trap
   useEffect(() => {
     // Only trap history if we are actively connected to a room
-    if (mpStatus === 'disconnected') return;
+    if (mpStatus === 'disconnected' && !showOfflineSetup) return;
 
     // Push a dummy state so there is something to "pop" when the user hits back
     window.history.pushState({ page: 'room' }, '', '');
 
     const handlePopState = (e: PopStateEvent) => {
       // The browser just popped our dummy state. We are still on the page, but the history pointer moved back.
+      if (showOfflineSetup) {
+        setShowOfflineSetup(false);
+        return;
+      }
+
+      if (mpStatus === 'playing' && roomName === 'offline') {
+        const confirmLeave = window.confirm("Are you sure you want to leave the offline game?");
+        if (confirmLeave) {
+          useGameStore.getState().disconnect();
+        } else {
+          window.history.pushState({ page: 'room' }, '', '');
+        }
+        return;
+      }
+
       const confirmLeave = window.confirm("Are you sure you want to leave the game room?");
       
       if (confirmLeave) {
@@ -43,13 +63,16 @@ export default function App() {
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [mpStatus, disconnect, isHost, playersCount]);
+  }, [mpStatus, disconnect, isHost, playersCount, showOfflineSetup, roomName]);
   
   if (mpStatus === 'lobby') return <LobbyScreen />;
+  if (mpStatus === 'playing' && roomName === 'offline') return <OfflineBoard />;
   if (mpStatus === 'playing') return <GameBoard />;
   if (mpStatus === 'connecting') return <LoadingScreen message={loadingMessage} />;
 
-  return <ConnectionMenu />;
+  if (showOfflineSetup) return <OfflineSetup onBack={() => setShowOfflineSetup(false)} />;
+
+  return <ConnectionMenu onOffline={() => setShowOfflineSetup(true)} />;
 }
 
 function LoadingScreen({ message = "Loading game..." }: { message?: string }) {
@@ -61,7 +84,7 @@ function LoadingScreen({ message = "Loading game..." }: { message?: string }) {
   );
 }
 
-function ConnectionMenu() {
+function ConnectionMenu({ onOffline }: { onOffline: () => void }) {
   const [tab, setTab] = useState<'create' | 'join'>('create');
   const [roomName, setRoomName] = useState('');
   const [password, setPassword] = useState('');
@@ -277,6 +300,19 @@ function ConnectionMenu() {
             className="w-full mt-6 bg-emerald-500 hover:bg-emerald-400 text-white font-bold py-3.5 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95 disabled:opacity-50 cursor-pointer"
           >
             {loading ? "Connecting..." : (tab === 'create' ? <><PlusCircle className="w-5 h-5"/> Create Room</> : <><LogIn className="w-5 h-5"/> Join Room</>)}
+          </button>
+
+          <div className="relative flex items-center mt-5">
+            <div className="flex-1 border-t border-slate-700"></div>
+            <span className="px-3 text-xs text-slate-500 font-bold uppercase">or</span>
+            <div className="flex-1 border-t border-slate-700"></div>
+          </div>
+
+          <button
+            onClick={onOffline}
+            className="w-full mt-4 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold py-3.5 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer hover:border-amber-500/60"
+          >
+            <WifiOff className="w-5 h-5" /> Play Offline (Pass &amp; Play)
           </button>
         </div>
       </div>
