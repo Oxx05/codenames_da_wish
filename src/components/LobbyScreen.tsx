@@ -41,13 +41,12 @@ export default function LobbyScreen() {
     
     // Check if the target team already has a spymaster
     const targetTeamHasSpymaster = players.some(p => p.team === team && p.role === 'spymaster' && p.id !== myPlayerId);
-    const targetTeamIsEmpty = !players.some(p => p.team === team && p.id !== myPlayerId);
     
     let finalRole = requestedRole;
     if (finalRole === 'spymaster' && targetTeamHasSpymaster) {
       finalRole = 'operative'; // Auto-downgrade if Spymaster slot is taken
-    } else if (targetTeamIsEmpty && team !== 'neutral') {
-      finalRole = 'spymaster'; // Auto-assign Spymaster if team is empty
+    } else if (team !== myTeam && !targetTeamHasSpymaster && team !== 'neutral') {
+      finalRole = 'spymaster'; // Auto-assign Spymaster if joining a team that lacks one
     }
 
     // If host, update directly and broadcast. Otherwise, send to host.
