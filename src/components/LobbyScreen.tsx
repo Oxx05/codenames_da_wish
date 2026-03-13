@@ -7,7 +7,7 @@ import { themes, ThemeId } from "@/lib/themes";
 import { Users, Settings, LogOut, Play, AlertTriangle, Dice5, Dices, Ban, Crown, Copy, CheckCircle } from "lucide-react";
 
 export default function LobbyScreen() {
-  const { isHost, roomName, players, myPlayerId, theme, numTeams, totalCards, assassinCount, cardsPerTeam, firstTeam, neutralEndsTurn, turnTimer } = useGameStore();
+  const { isHost, roomName, players, myPlayerId, theme, numTeams, totalCards, assassinCount, cardsPerTeam, firstTeam, neutralEndsTurn, opponentEndsTurn, assassinEndsGame, turnTimer } = useGameStore();
   const { disconnect, broadcastAction, sendActionToHost, kickPlayer, transferHost } = usePeerStore();
 
   const me = players.find(p => p.id === myPlayerId);
@@ -337,6 +337,52 @@ export default function LobbyScreen() {
                   ) : (
                     <div className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1 text-xs font-bold uppercase text-slate-300">
                       {neutralEndsTurn ? 'Yes' : 'No'}
+                    </div>
+                  )}
+                </div>
+
+                {/* Opponent Ends Turn Toggle */}
+                <div className="pt-4 border-t border-slate-700/50 mt-2 flex justify-between items-center">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Opponent Tile</label>
+                    <span className="text-[10px] text-slate-500">Ends turn when guessed?</span>
+                  </div>
+                  {isHost ? (
+                    <button 
+                      onClick={() => {
+                        useGameStore.getState().updateSettings({ opponentEndsTurn: !opponentEndsTurn });
+                        broadcastAction({ type: 'UPDATE_SETTINGS', settings: { opponentEndsTurn: !opponentEndsTurn } } as any);
+                      }}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-900 ${opponentEndsTurn ? 'bg-emerald-500' : 'bg-slate-700'}`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${opponentEndsTurn ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                  ) : (
+                    <div className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1 text-xs font-bold uppercase text-slate-300">
+                      {opponentEndsTurn ? 'Yes' : 'No'}
+                    </div>
+                  )}
+                </div>
+
+                {/* Assassin Ends Game Toggle */}
+                <div className="pt-4 border-t border-slate-700/50 mt-2 flex justify-between items-center">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Assassin</label>
+                    <span className="text-[10px] text-slate-500">Game over for all teams?</span>
+                  </div>
+                  {isHost ? (
+                    <button 
+                      onClick={() => {
+                        useGameStore.getState().updateSettings({ assassinEndsGame: !assassinEndsGame });
+                        broadcastAction({ type: 'UPDATE_SETTINGS', settings: { assassinEndsGame: !assassinEndsGame } } as any);
+                      }}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-900 ${assassinEndsGame ? 'bg-emerald-500' : 'bg-slate-700'}`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${assassinEndsGame ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                  ) : (
+                    <div className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1 text-xs font-bold uppercase text-slate-300">
+                      {assassinEndsGame ? 'Yes' : 'No'}
                     </div>
                   )}
                 </div>

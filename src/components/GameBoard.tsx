@@ -12,7 +12,7 @@ export default function GameBoard() {
   const { 
     myPlayerId, players, roomName, isHost,
     cards, remaining, currentTurn, turnPhase, clue, guessesLeft, winner, numTeams,
-    theme, totalCards, assassinCount, neutralEndsTurn, turnTimer, turnEndTime,
+    theme, totalCards, assassinCount, neutralEndsTurn, opponentEndsTurn, assassinEndsGame, turnTimer, turnEndTime,
     sfxEnabled, toggleSFX, stats,
     chatMessages, clueHistory, addChatMessage
   } = useGameStore();
@@ -431,6 +431,18 @@ export default function GameBoard() {
                 </span>
               </div>
               <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-bold">Opponent Ends Turn</span>
+                <span className={cn("font-bold px-1.5 py-0.5 rounded text-[10px] uppercase", opponentEndsTurn ? "bg-rose-500/20 text-rose-400" : "bg-emerald-500/20 text-emerald-400")}>
+                  {opponentEndsTurn ? 'Yes' : 'No'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-bold">Assassin Ends Game</span>
+                <span className={cn("font-bold px-1.5 py-0.5 rounded text-[10px] uppercase", assassinEndsGame ? "bg-rose-500/20 text-rose-400" : "bg-emerald-500/20 text-emerald-400")}>
+                  {assassinEndsGame ? 'Yes' : 'No'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
                 <span className="text-slate-400 font-bold">Turn Timer</span>
                 <span className="text-slate-200 font-bold">{turnTimer === 0 ? 'Off' : `${turnTimer}s`}</span>
               </div>
@@ -707,6 +719,18 @@ export default function GameBoard() {
                     <span className="text-slate-400 font-bold">Neutral Ends Turn</span>
                     <span className={cn("font-bold px-2 py-1 rounded text-xs uppercase", neutralEndsTurn ? "bg-rose-500/20 text-rose-400" : "bg-emerald-500/20 text-emerald-400")}>
                       {neutralEndsTurn ? 'Yes' : 'No'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-400 font-bold">Opponent Ends Turn</span>
+                    <span className={cn("font-bold px-2 py-1 rounded text-xs uppercase", opponentEndsTurn ? "bg-rose-500/20 text-rose-400" : "bg-emerald-500/20 text-emerald-400")}>
+                      {opponentEndsTurn ? 'Yes' : 'No'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-400 font-bold">Assassin Ends Game</span>
+                    <span className={cn("font-bold px-2 py-1 rounded text-xs uppercase", assassinEndsGame ? "bg-rose-500/20 text-rose-400" : "bg-emerald-500/20 text-emerald-400")}>
+                      {assassinEndsGame ? 'Yes' : 'No'}
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-sm">

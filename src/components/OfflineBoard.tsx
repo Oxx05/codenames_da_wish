@@ -10,19 +10,20 @@ import { SFX } from '@/lib/sounds';
 export default function OfflineBoard() {
   const {
     cards, remaining, currentTurn, turnPhase, clue, guessesLeft, winner, numTeams,
-    theme, totalCards, assassinCount, neutralEndsTurn, turnTimer, turnEndTime,
+    theme, totalCards, assassinCount, neutralEndsTurn, opponentEndsTurn, assassinEndsGame, turnTimer, turnEndTime,
     sfxEnabled, toggleSFX, stats,
     clueHistory, offlineVerbalClues
   } = useGameStore();
 
   // Show/Hide spymaster color overlay — auto-follows phase, but can be toggled manually
   // In offlineVerbalClues mode, the game starts in 'guess' phase so this will default to false (hide map)
-  const [showColors, setShowColors] = useState(useGameStore.getState().turnPhase === 'clue');
+  const [showColors, setShowColors] = useState(false);
   const [isHandoff, setIsHandoff] = useState(false); // pass-the-device screen
   const [clueWord, setClueWord] = useState('');
   const [clueCount, setClueCount] = useState(1);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [showStats, setShowStats] = useState(true);
+  const [confirmShowMap, setConfirmShowMap] = useState(false);
 
   // Track previous turn/phase for auto-switching
   const prevTurnRef = useRef({ turn: currentTurn, phase: turnPhase });
@@ -42,8 +43,8 @@ export default function OfflineBoard() {
         if (phaseChanged || turnChanged) {
           setIsHandoff(true);
         }
-        // Auto-set colors based on phase
-        setShowColors(turnPhase === 'clue');
+        // Keep map hidden until confirmed to avoid accidental reveals
+        setShowColors(false);
       }
     }
 
@@ -101,6 +102,23 @@ export default function OfflineBoard() {
 
   const handleDismissHandoff = () => {
     setIsHandoff(false);
+  };
+
+  const handleToggleMap = () => {
+    if (showColors) {
+      setShowColors(false);
+      return;
+    }
+    setConfirmShowMap(true);
+  };
+
+  const confirmMapReveal = () => {
+    setConfirmShowMap(false);
+    setShowColors(true);
+  };
+
+  const cancelMapReveal = () => {
+    setConfirmShowMap(false);
   };
 
   const handleGiveClue = (e: React.FormEvent) => {
@@ -237,7 +255,7 @@ export default function OfflineBoard() {
           {/* Show/Hide Map toggle */}
           {!winner && (
             <button
-              onClick={() => setShowColors(!showColors)}
+              onClick={handleToggleMap}
               className={cn(
                 "p-1.5 sm:p-2 rounded-lg border transition-all cursor-pointer flex items-center gap-1",
                 showColors
@@ -288,12 +306,32 @@ export default function OfflineBoard() {
               <span className="text-slate-500 font-medium">Theme</span>
               <span className="text-slate-200 font-bold uppercase">{theme}</span>
             </div>
+            <div className="mt-2 pt-2 border-t border-slate-700/50 flex flex-col gap-2">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-bold">Neutral Ends Turn</span>
+                <span className={cn("font-bold px-1.5 py-0.5 rounded text-[10px] uppercase", neutralEndsTurn ? "bg-rose-500/20 text-rose-400" : "bg-emerald-500/20 text-emerald-400")}>
+                  {neutralEndsTurn ? 'Yes' : 'No'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-bold">Opponent Ends Turn</span>
+                <span className={cn("font-bold px-1.5 py-0.5 rounded text-[10px] uppercase", opponentEndsTurn ? "bg-rose-500/20 text-rose-400" : "bg-emerald-500/20 text-emerald-400")}>
+                  {opponentEndsTurn ? 'Yes' : 'No'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-bold">Assassin Ends Game</span>
+                <span className={cn("font-bold px-1.5 py-0.5 rounded text-[10px] uppercase", assassinEndsGame ? "bg-rose-500/20 text-rose-400" : "bg-emerald-500/20 text-emerald-400")}>
+                  {assassinEndsGame ? 'Yes' : 'No'}
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* Map Toggle (Desktop) */}
           {!winner && (
             <button
-              onClick={() => setShowColors(!showColors)}
+              onClick={handleToggleMap}
               className={cn(
                 "w-full p-3 rounded-xl border-2 text-center font-black uppercase tracking-wider text-sm transition-all cursor-pointer",
                 showColors
@@ -476,6 +514,7 @@ export default function OfflineBoard() {
       {/* Modals */}
       <Modal isOpen={modalState.isOpen && modalState.type === 'newgame'} title="New Game?" message="Start a new game? Current progress will be lost." confirmText="New Game" type="danger" onConfirm={confirmNewGame} onCancel={() => setModalState({ isOpen: false, type: null })} />
       <Modal isOpen={modalState.isOpen && modalState.type === 'quit'} title="Quit?" message="Are you sure you want to quit and return to the main menu?" confirmText="Quit" type="danger" onConfirm={confirmQuit} onCancel={() => setModalState({ isOpen: false, type: null })} />
+      <Modal isOpen={confirmShowMap} title="Show Map?" message="Reveal the spymaster map now? Make sure only the spymaster can see the screen." confirmText="Show Map" type="confirm" onConfirm={confirmMapReveal} onCancel={cancelMapReveal} />
     </div>
   );
 }

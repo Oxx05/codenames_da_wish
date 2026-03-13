@@ -96,7 +96,7 @@ export const usePeerStore = create<PeerState>((set, get) => {
             type: 'JOIN_ACCEPTED', 
             state: { 
               players: newPlayers, 
-              settings: { theme: gameStore.theme, numTeams: gameStore.numTeams, totalCards: gameStore.totalCards, assassinCount: gameStore.assassinCount, firstTeam: gameStore.firstTeam, cardsPerTeam: gameStore.cardsPerTeam, neutralEndsTurn: gameStore.neutralEndsTurn, turnTimer: gameStore.turnTimer },
+              settings: { theme: gameStore.theme, numTeams: gameStore.numTeams, totalCards: gameStore.totalCards, assassinCount: gameStore.assassinCount, firstTeam: gameStore.firstTeam, cardsPerTeam: gameStore.cardsPerTeam, neutralEndsTurn: gameStore.neutralEndsTurn, opponentEndsTurn: gameStore.opponentEndsTurn, turnTimer: gameStore.turnTimer },
               cards: gameStore.cards,
               turnPhase: gameStore.turnPhase,
               currentTurn: gameStore.currentTurn,

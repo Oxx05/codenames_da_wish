@@ -16,6 +16,8 @@ export default function OfflineSetup({ onBack }: OfflineSetupProps) {
   const [assassinCount, setAssassinCount] = useState(1);
   const [firstTeam, setFirstTeam] = useState<TeamId | 'random'>('random');
   const [neutralEndsTurn, setNeutralEndsTurn] = useState(true);
+  const [opponentEndsTurn, setOpponentEndsTurn] = useState(false);
+  const [assassinEndsGame, setAssassinEndsGame] = useState(true);
   const [turnTimer, setTurnTimer] = useState(0);
   const [offlineVerbalClues, setOfflineVerbalClues] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -65,7 +67,7 @@ export default function OfflineSetup({ onBack }: OfflineSetupProps) {
 
       // Configure store for offline game
       const store = useGameStore.getState();
-      store.updateSettings({ theme, numTeams, totalCards, assassinCount, firstTeam, neutralEndsTurn, turnTimer, offlineVerbalClues });
+      store.updateSettings({ theme, numTeams, totalCards, assassinCount, firstTeam, neutralEndsTurn, opponentEndsTurn, assassinEndsGame, turnTimer, offlineVerbalClues });
       store.startGame(cards, firstTurnTeam);
       // Mark as offline mode
       useGameStore.setState({ 
@@ -208,6 +210,34 @@ export default function OfflineSetup({ onBack }: OfflineSetupProps) {
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-900 cursor-pointer ${neutralEndsTurn ? 'bg-emerald-500' : 'bg-slate-700'}`}
             >
               <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${neutralEndsTurn ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+
+          {/* Opponent Ends Turn Toggle */}
+          <div className="pt-4 border-t border-slate-700/50 flex justify-between items-center">
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Opponent Tile</label>
+              <span className="text-[10px] text-slate-500">Ends turn when guessed?</span>
+            </div>
+            <button
+              onClick={() => setOpponentEndsTurn(!opponentEndsTurn)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-900 cursor-pointer ${opponentEndsTurn ? 'bg-emerald-500' : 'bg-slate-700'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${opponentEndsTurn ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+
+          {/* Assassin Ends Game Toggle */}
+          <div className="pt-4 border-t border-slate-700/50 flex justify-between items-center">
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Assassin</label>
+              <span className="text-[10px] text-slate-500">Game over for all teams?</span>
+            </div>
+            <button
+              onClick={() => setAssassinEndsGame(!assassinEndsGame)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-900 cursor-pointer ${assassinEndsGame ? 'bg-emerald-500' : 'bg-slate-700'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${assassinEndsGame ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
           </div>
 

@@ -57,6 +57,8 @@ interface GameState {
   cardsPerTeam: Record<string, number>;
   firstTeam: TeamId | 'random';
   neutralEndsTurn: boolean;
+  opponentEndsTurn: boolean;
+  assassinEndsGame: boolean; // true = game over for all, false = only eliminates current team
   turnTimer: number; // 0 for disabled, or seconds (e.g. 60, 90, 120)
   offlineVerbalClues: boolean; // Fast mode for offline: skip clue typing
 
@@ -85,7 +87,7 @@ interface GameState {
   // Actions
   joinLobby: (roomName: string, isHost: boolean, myId: string) => void;
   updatePlayers: (players: Player[]) => void;
-  updateSettings: (settings: Partial<Pick<GameState, 'theme' | 'numTeams' | 'totalCards' | 'assassinCount' | 'firstTeam' | 'cardsPerTeam' | 'neutralEndsTurn' | 'turnTimer' | 'offlineVerbalClues'>>) => void;
+  updateSettings: (settings: Partial<Pick<GameState, 'theme' | 'numTeams' | 'totalCards' | 'assassinCount' | 'firstTeam' | 'cardsPerTeam' | 'neutralEndsTurn' | 'opponentEndsTurn' | 'assassinEndsGame' | 'turnTimer' | 'offlineVerbalClues'>>) => void;
   toggleSFX: () => void;
   startGame: (cards: Card[], firstTurn: TeamId) => void;
   giveClue: (word: string, count: number) => void;
@@ -114,6 +116,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   cardsPerTeam: { red: 0, blue: 0, green: 0, yellow: 0 }, // 0 means auto-calculate
   firstTeam: 'random',
   neutralEndsTurn: true,
+  opponentEndsTurn: false,
+  assassinEndsGame: true,
   turnTimer: 0,
   offlineVerbalClues: false,
 
@@ -203,17 +207,51 @@ export const useGameStore = create<GameState>((set, get) => ({
     let nextTurn = state.currentTurn;
     let nextGuesses = state.guessesLeft - 1;
     let winner: TeamId | 'assassin' | null = state.winner;
+    let turnChanged = false;
+
+    const activeTeams: TeamId[] = state.numTeams === 2 ? ['red', 'blue'] : 
+                                  state.numTeams === 3 ? ['red', 'blue', 'green'] : 
+                                  ['red', 'blue', 'green', 'yellow'];
 
     // Loss condition
     if (card.role === 'assassin') {
-      winner = 'assassin';
+      if (state.assassinEndsGame) {
+        // Classic: game over for everyone
+        winner = 'assassin';
+      } else {
+        // Eliminate only the current team: skip to next team
+        // Check if only one team remains — that team wins
+        const remainingTeams = activeTeams.filter(t => t !== state.currentTurn && newRemaining[t] > 0);
+        if (remainingTeams.length <= 1 && remainingTeams.length > 0) {
+          winner = remainingTeams[0];
+        } else if (remainingTeams.length === 0) {
+          winner = 'assassin'; // fallback: everyone eliminated
+        } else {
+          // Skip to next team, current team is out
+          const turnIdx = activeTeams.indexOf(state.currentTurn);
+          let nextIdx = (turnIdx + 1) % activeTeams.length;
+          // Find next team that still has cards
+          while (newRemaining[activeTeams[nextIdx]] === 0 || activeTeams[nextIdx] === state.currentTurn) {
+            nextIdx = (nextIdx + 1) % activeTeams.length;
+          }
+          nextTurn = activeTeams[nextIdx];
+          turnChanged = true;
+          if (state.offlineVerbalClues) {
+            nextPhase = 'guess';
+            nextGuesses = 99;
+          } else {
+            nextPhase = 'clue';
+            nextGuesses = 0;
+          }
+        }
+      }
     } 
     // Win condition - team found all their agents
     else if (newRemaining[card.role] === 0 && card.role !== 'neutral') {
       winner = card.role;
     }
     // Wrong guess or neutral (if enabled) - end turn immediately
-    else if (card.role !== state.currentTurn && card.role !== 'neutral' || 
+    else if (((card.role !== state.currentTurn && card.role !== 'neutral') && state.opponentEndsTurn) || 
              (card.role === 'neutral' && state.neutralEndsTurn) || 
              nextGuesses === 0) {
       if (state.offlineVerbalClues) {
@@ -224,11 +262,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         nextGuesses = 0;
       }
       // Cycle turn
-      const activeTeams: TeamId[] = state.numTeams === 2 ? ['red', 'blue'] : 
-                                    state.numTeams === 3 ? ['red', 'blue', 'green'] : 
-                                    ['red', 'blue', 'green', 'yellow'];
       const turnIdx = activeTeams.indexOf(state.currentTurn);
       nextTurn = activeTeams[(turnIdx + 1) % activeTeams.length];
+      turnChanged = true;
     }
 
     const isCorrect = card.role === state.currentTurn;
@@ -247,6 +283,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       winner,
       stats: {
         ...state.stats,
+        turns: turnChanged ? state.stats.turns + 1 : state.stats.turns,
         correctGuesses: isCorrect ? state.stats.correctGuesses + 1 : state.stats.correctGuesses,
         wrongGuesses: (!isCorrect && !isNeutral && !isAssassin) ? state.stats.wrongGuesses + 1 : state.stats.wrongGuesses,
       }
