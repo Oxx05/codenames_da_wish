@@ -113,7 +113,7 @@ export default function ManualPage({ onClose }: ManualPageProps) {
   const currentStep = tutorialSteps[tutorialStep];
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 overflow-y-auto w-full fixed inset-0 z-50 flex flex-col">
+    <div className="min-h-screen bg-slate-950 text-slate-200 overflow-y-auto overflow-x-hidden w-full fixed inset-0 z-50 flex flex-col">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 p-4 flex items-center justify-between">
         <h1 className="text-xl font-black tracking-widest text-white flex items-center gap-3">
@@ -131,35 +131,35 @@ export default function ManualPage({ onClose }: ManualPageProps) {
       <div className="flex-1 w-full max-w-4xl mx-auto p-4 md:p-8 flex flex-col">
         
         {/* Navigation Tabs */}
-        <div className="flex gap-2 p-1 bg-slate-900 rounded-xl mb-8 w-fit mx-auto border border-slate-800">
+        <div className="flex flex-col sm:flex-row gap-2 p-1 bg-slate-900 rounded-xl mb-8 w-full sm:w-fit mx-auto border border-slate-800">
           <button 
             onClick={() => setActiveTab('tutorial')}
             className={cn(
-              "px-6 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-2",
+              "px-4 sm:px-6 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2",
               activeTab === 'tutorial' ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
             )}
           >
-            <MonitorPlay className="w-4 h-4" />
+            <MonitorPlay className="w-4 h-4 flex-shrink-0" />
             Interactive Tutorial
           </button>
           <button 
             onClick={() => setActiveTab('rules')}
             className={cn(
-              "px-6 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-2",
+              "px-4 sm:px-6 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2",
               activeTab === 'rules' ? "bg-emerald-600 text-white shadow-lg" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
             )}
           >
-            <BookOpen className="w-4 h-4" />
+            <BookOpen className="w-4 h-4 flex-shrink-0" />
             Full Rules
           </button>
           <button 
             onClick={() => setActiveTab('controls')}
             className={cn(
-              "px-6 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-2",
+              "px-4 sm:px-6 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2",
               activeTab === 'controls' ? "bg-amber-600 text-white shadow-lg" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
             )}
           >
-            <ShieldAlert className="w-4 h-4" />
+            <ShieldAlert className="w-4 h-4 flex-shrink-0" />
             Controls & Interface
           </button>
         </div>
