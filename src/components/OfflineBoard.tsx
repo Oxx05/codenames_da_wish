@@ -2,52 +2,75 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useGameStore, TeamId, Card } from "@/store/gameStore";
-import { LogOut, RefreshCcw, Hand, Flag, Clock, Volume2, VolumeX, Trophy, BarChart2, Eye, EyeOff, History, ArrowLeftRight, ShieldAlert } from "lucide-react";
+import { Check, XCircle, Users, Eye, EyeOff, RotateCcw, Home, Play, ArrowLeftRight, Settings, Trophy, BarChart2, ShieldAlert, Sparkles, User, Sword, Clock, Hash, Skull, X, Volume2, VolumeX, RefreshCcw, LogOut, Hand, History, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Modal } from './Modal';
 import { SFX } from '@/lib/sounds';
+import { themes } from '@/lib/themes';
+import { Confetti } from './Confetti';
 
 export default function OfflineBoard() {
   const {
     cards, remaining, currentTurn, turnPhase, clue, guessesLeft, winner, numTeams,
     theme, totalCards, assassinCount, neutralEndsTurn, opponentEndsTurn, assassinEndsGame, turnTimer, turnEndTime,
     sfxEnabled, toggleSFX, stats,
-    clueHistory, offlineVerbalClues
+    clueHistory, offlineVerbalClues, eliminatedTeams
   } = useGameStore();
 
   // Show/Hide spymaster color overlay — auto-follows phase, but can be toggled manually
   // In offlineVerbalClues mode, the game starts in 'guess' phase so this will default to false (hide map)
   const [showColors, setShowColors] = useState(false);
-  const [isHandoff, setIsHandoff] = useState(false); // pass-the-device screen
+  const [isHandoff, setIsHandoff] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [clueWord, setClueWord] = useState('');
   const [clueCount, setClueCount] = useState(1);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [showStats, setShowStats] = useState(true);
   const [confirmShowMap, setConfirmShowMap] = useState(false);
-
+  // Fix 4: flip animation lock — prevents overlays from appearing before flip completes
+  const flipLockRef = useRef(false);
+  const flipLockTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Fix 5: team-change toast
+  const [teamChangeToast, setTeamChangeToast] = useState<string | null>(null);
+  const prevTurnToastRef = useRef(currentTurn);
   // Track previous turn/phase for auto-switching
   const prevTurnRef = useRef({ turn: currentTurn, phase: turnPhase });
 
-  // Auto-switch colors + show handoff when turn/phase changes
+  // Fix 5: team-change toast in verbal mode
+  useEffect(() => {
+    if (!offlineVerbalClues || winner) return;
+    if (prevTurnToastRef.current !== currentTurn && cards.length > 0) {
+      setTeamChangeToast(currentTurn);
+      const t = setTimeout(() => setTeamChangeToast(null), 2500);
+      return () => clearTimeout(t);
+    }
+    prevTurnToastRef.current = currentTurn;
+  }, [currentTurn, offlineVerbalClues, winner, cards.length]);
+
+  // Auto-switch colors + show handoff when turn/phase changes (Fix 4: respects flip animation lock)
   useEffect(() => {
     const prev = prevTurnRef.current;
     const phaseChanged = prev.phase !== turnPhase;
     const turnChanged = prev.turn !== currentTurn;
     
     if ((phaseChanged || turnChanged) && !winner) {
-      if (offlineVerbalClues) {
-        setIsHandoff(false);
-        setShowColors(false); // Force hide map on turn swap so the next spymaster can safely receive it
-      } else {
-        // Show handoff screen on transitions
-        if (phaseChanged || turnChanged) {
+      const doTransition = () => {
+        if (offlineVerbalClues) {
+          setIsHandoff(false);
+          setShowColors(false);
+        } else {
           setIsHandoff(true);
+          setShowColors(false);
         }
-        // Keep map hidden until confirmed to avoid accidental reveals
-        setShowColors(false);
+      };
+      if (flipLockRef.current) {
+        const delay = setTimeout(doTransition, 700);
+        prevTurnRef.current = { turn: currentTurn, phase: turnPhase };
+        return () => clearTimeout(delay);
+      } else {
+        doTransition();
       }
     }
-
     prevTurnRef.current = { turn: currentTurn, phase: turnPhase };
   }, [currentTurn, turnPhase, winner, offlineVerbalClues]);
 
@@ -92,16 +115,32 @@ export default function OfflineBoard() {
     prevCardsRef.current = cards;
   }, [cards, sfxEnabled]);
 
+  // Sound Effects: New Clue Notification
+  useEffect(() => {
+    if (!sfxEnabled || !clue || !clue.word || winner) return;
+    SFX.newClue();
+  }, [clue, sfxEnabled, winner]);
+
   useEffect(() => {
     if (winner) {
-      setShowStats(true);
-      setIsHandoff(false);
-      if (sfxEnabled) SFX.win();
+      setTeamChangeToast(null); // Fix: hide toast if it's there
+      // Fix 4: delay stats overlay to let the last card flip finish
+      const delay = flipLockRef.current ? 700 : 0;
+      const t = setTimeout(() => {
+        setShowStats(true);
+        setIsHandoff(false);
+        if (sfxEnabled) SFX.win();
+      }, delay);
+      return () => clearTimeout(t);
     }
   }, [winner, sfxEnabled]);
 
   const handleDismissHandoff = () => {
     setIsHandoff(false);
+    // Fix 3: in text mode, auto-trigger the map confirm dialog for the spymaster
+    if (isCluePhase && !offlineVerbalClues) {
+      setConfirmShowMap(true);
+    }
   };
 
   const handleToggleMap = () => {
@@ -132,6 +171,13 @@ export default function OfflineBoard() {
 
   const handleCardClick = (index: number) => {
     if (showColors || turnPhase !== 'guess' || cards[index].revealed || winner) return;
+    
+    if (sfxEnabled) SFX.cardFlip();
+    
+    // Fix 4: set a flip lock so overlays wait for the card animation to finish (~650ms)
+    flipLockRef.current = true;
+    if (flipLockTimerRef.current) clearTimeout(flipLockTimerRef.current);
+    flipLockTimerRef.current = setTimeout(() => { flipLockRef.current = false; }, 650);
     useGameStore.getState().revealCard(index);
   };
 
@@ -145,9 +191,47 @@ export default function OfflineBoard() {
     setModalState({ isOpen: true, type: 'newgame' });
   };
 
-  const confirmNewGame = () => {
-    useGameStore.getState().disconnect();
+  const confirmNewGame = async () => {
     setModalState({ isOpen: false, type: null });
+    // Instant Restart Logic: Re-fetch and re-start using current store config
+    const store = useGameStore.getState();
+    const { theme, numTeams, totalCards, assassinCount, cardsPerTeam, firstTeam, neutralEndsTurn, opponentEndsTurn, assassinEndsGame, turnTimer, offlineVerbalClues } = store;
+    
+    // Show a quick loader if possible, or just proceed
+    try {
+      const selectedThemeInfo = themes[theme];
+      const allItems = await selectedThemeInfo.fetchData();
+      const shuffledItems = [...allItems].sort(() => 0.5 - Math.random());
+      const selected = shuffledItems.slice(0, totalCards);
+
+      const roles: TeamId[] = [];
+      const teamNames: TeamId[] = numTeams === 2 ? ['red', 'blue'] : numTeams === 3 ? ['red', 'blue', 'green'] : ['red', 'blue', 'green', 'yellow'];
+      const firstTurnTeam = firstTeam === 'random' ? teamNames[Math.floor(Math.random() * teamNames.length)] : firstTeam;
+
+      teamNames.forEach(t => {
+        const autoPerTeam = Math.floor((totalCards - assassinCount - Math.max(0, 10 - numTeams)) / numTeams);
+        const manualCount = cardsPerTeam[t as string];
+        const count = (manualCount && manualCount > 0) ? manualCount : (t === firstTurnTeam ? autoPerTeam + 1 : autoPerTeam);
+        for (let i = 0; i < count; i++) roles.push(t as TeamId);
+      });
+      for (let i = 0; i < assassinCount; i++) roles.push('assassin');
+      while (roles.length < totalCards) roles.push('neutral');
+      roles.sort(() => 0.5 - Math.random());
+
+      const cards: Card[] = selected.map((item, i) => ({
+        name: item.name,
+        image: item.image,
+        role: roles[i],
+        revealed: false
+      }));
+
+      store.startGame(cards, firstTurnTeam);
+      setShowStats(false);
+      setIsMobileMenuOpen(false);
+    } catch (err) {
+      console.error("Failed to instant restart:", err);
+      store.disconnect(); // Fallback to menu if fetch fails
+    }
   };
 
   const handleQuit = () => {
@@ -213,9 +297,34 @@ export default function OfflineBoard() {
   }
 
   return (
-    <div className="h-[100dvh] bg-slate-950 flex flex-col font-sans overflow-hidden">
+    <div className={cn(
+      "h-[100dvh] bg-slate-950 flex flex-col font-sans overflow-hidden transition-colors duration-1000",
+      winner === 'assassin' ? "animate-interference bg-black" : ""
+    )}>
+      {winner && winner !== 'assassin' && <Confetti />}
+      {/* Fix 5 & refine: Team change toast without emojis, with a close button */}
+      {teamChangeToast && (
+        <div className={cn(
+          "fixed top-4 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-2xl font-black uppercase tracking-wider text-lg shadow-2xl border-2 transition-all animate-in slide-in-from-top flex items-center gap-4",
+          teamChangeToast === 'red' ? 'bg-red-600/90 text-white border-red-400' :
+          teamChangeToast === 'blue' ? 'bg-blue-600/90 text-white border-blue-400' :
+          teamChangeToast === 'green' ? 'bg-green-600/90 text-white border-green-400' :
+          'bg-yellow-500/90 text-slate-900 border-yellow-300'
+        )}>
+          <span>{teamChangeToast.toUpperCase()} TEAM'S TURN!</span>
+          <button onClick={() => setTeamChangeToast(null)} className="opacity-70 hover:opacity-100 hover:scale-110 transition-all p-1" title="Close"><X className="w-5 h-5" /></button>
+        </div>
+      )}
       {/* ===== HEADER ===== */}
       <header className="flex items-center justify-between px-2 py-1.5 sm:px-4 sm:py-2 bg-slate-900 border-b border-slate-800 shrink-0 z-10 gap-2 sm:gap-3">
+        {/* Hamburger (Mobile) */}
+        <button 
+          onClick={() => setIsMobileMenuOpen(true)}
+          className="lg:hidden p-1.5 text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 shrink-0 cursor-pointer"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+
         {/* Team Scores */}
         <div className="flex gap-1 sm:gap-2 shrink-0">
           {(['red', 'blue', ...(numTeams >= 3 ? ['green'] : []), ...(numTeams >= 4 ? ['yellow'] : [])] as string[]).map(team => (
@@ -244,39 +353,40 @@ export default function OfflineBoard() {
                 </span>
               )}
               <span className={cn("text-xs sm:text-sm font-extrabold uppercase truncate", teamTextColor[currentTurn])}>
-                {offlineVerbalClues ? `${currentTurn} Team` : `${currentTurn} · ${isCluePhase ? 'Giving Clue' : `Guessing (${guessesLeft})`}`}
+                {offlineVerbalClues ? `${currentTurn} Team` : `${currentTurn} · ${isCluePhase ? 'Giving Clue' : `Guessing (${guessesLeft} left)`}`}
               </span>
             </div>
           )}
         </div>
 
-        {/* Actions */}
-        <div className="flex gap-1 sm:gap-1.5 items-center shrink-0">
-          {/* Show/Hide Map toggle */}
-          {!winner && (
-            <button
-              onClick={handleToggleMap}
-              className={cn(
-                "p-1.5 sm:p-2 rounded-lg border transition-all cursor-pointer flex items-center gap-1",
-                showColors
-                  ? 'bg-amber-500/20 border-amber-500/50 text-amber-400 hover:bg-amber-500/30'
-                  : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'
-              )}
-              title={showColors ? "Hide Map (Operative View)" : "Show Map (Spymaster View)"}
-            >
-              {showColors ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-              <span className="hidden sm:inline text-[10px] font-bold uppercase">{showColors ? 'Map' : 'Map'}</span>
-            </button>
-          )}
-          <button onClick={toggleSFX} className="p-1.5 text-slate-400 hover:text-white cursor-pointer" title={sfxEnabled ? "Mute" : "Unmute"}>
+        {/* Actions Area */}
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          <button
+            onClick={handleToggleMap}
+            className={cn(
+              "p-2 rounded-lg border transition-all cursor-pointer flex items-center gap-1",
+              showColors
+                ? 'bg-amber-500/20 border-amber-500/50 text-amber-400 hover:bg-amber-500/30'
+                : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'
+            )}
+            title="Spymaster Map (Requires Confirmation)"
+          >
+            {showColors ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+            <span className="hidden sm:inline text-[10px] font-bold uppercase">Map</span>
+          </button>
+          
+          <button onClick={toggleSFX} className="p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 cursor-pointer" title={sfxEnabled ? "Mute" : "Unmute"}>
             {sfxEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4 text-rose-500" />}
           </button>
-          <button onClick={handleNewGame} className="p-1.5 text-slate-400 hover:text-amber-400 cursor-pointer" title="New Game">
-            <RefreshCcw className="w-4 h-4" />
-          </button>
-          <button onClick={handleQuit} className="p-1.5 text-slate-400 hover:text-rose-400 cursor-pointer" title="Quit">
-            <LogOut className="w-4 h-4" />
-          </button>
+
+          <div className="hidden lg:flex gap-1.5 items-center ml-2 border-l border-slate-800 pl-3">
+            <button onClick={handleNewGame} className="p-1.5 text-slate-400 hover:text-amber-400 cursor-pointer" title="New Game">
+              <RefreshCcw className="w-4 h-4" />
+            </button>
+            <button onClick={handleQuit} className="p-1.5 text-slate-400 hover:text-rose-400 cursor-pointer" title="Quit">
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -455,15 +565,51 @@ export default function OfflineBoard() {
 
       {/* End Game Overlay & Stats */}
       {winner && showStats && (
-        <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-500">
-          <div className="absolute top-10 flex flex-col items-center animate-bounce">
-            <Trophy className="w-16 h-16 text-amber-500 mb-2 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]" />
-            <h1 className={cn("text-4xl font-black uppercase tracking-tighter", teamTextColor[winner === 'assassin' ? currentTurn : winner])}>
-              {winner === 'assassin' ? `${currentTurn} Hit Assassin!` : `${winner} Wins!`}
-            </h1>
-          </div>
-          
-          <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl overflow-hidden mt-10">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" />
+          <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700/50 rounded-3xl shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden animate-in fade-in zoom-in-95 duration-500">
+            {/* Header / Winner Banner */}
+            <div className={cn(
+              "p-8 sm:p-10 text-center relative border-b overflow-hidden",
+              winner === 'red' ? 'bg-gradient-to-b from-red-600/40 to-slate-900 border-red-500/50' :
+              winner === 'blue' ? 'bg-gradient-to-b from-blue-600/40 to-slate-900 border-blue-500/50' :
+              winner === 'green' ? 'bg-gradient-to-b from-green-600/40 to-slate-900 border-green-500/50' :
+              winner === 'yellow' ? 'bg-gradient-to-b from-yellow-500/40 to-slate-900 border-yellow-500/50' :
+              'bg-gradient-to-b from-rose-950 to-black border-rose-900' // Assassin
+            )}>
+              {winner === 'assassin' && <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuMDUiLz4KPC9zdmc+')] opacity-20 pointer-events-none"></div>}
+              {winner !== 'assassin' && <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-white/5 blur-3xl rounded-full"></div>}
+
+              {winner === 'assassin' ? (
+                <div className="relative z-10">
+                  <Skull className="w-20 h-20 text-red-500/80 mx-auto mb-4 animate-bounce drop-shadow-[0_0_15px_rgba(239,68,68,0.8)]" />
+                  <h2 className="text-4xl sm:text-5xl font-black uppercase tracking-[0.2em] text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,1)] mb-2">Game Over</h2>
+                  <p className="font-bold text-lg text-red-200/80 bg-red-950/50 inline-block px-4 py-1.5 rounded-full border border-red-900 mt-2">
+                    The Assassin was found
+                  </p>
+                </div>
+              ) : (
+                <div className="relative z-10">
+                  <h2 className={cn("text-5xl sm:text-6xl font-black uppercase tracking-[0.15em] mb-4 drop-shadow-md", 
+                      winner === 'yellow' ? 'text-yellow-400' : 
+                      winner === 'red' ? 'text-red-400' :
+                      winner === 'blue' ? 'text-blue-400' :
+                      'text-green-400'
+                    )}>
+                    {winner} Wins!
+                  </h2>
+                  <p className={cn("font-bold text-lg shadow-inner inline-block px-4 py-1.5 rounded-full border", 
+                      winner === 'yellow' ? 'text-slate-900 bg-yellow-400 border-yellow-500' : 
+                      'text-white bg-slate-800 border-slate-600'
+                    )}>
+                    {assassinEndsGame === false && currentTurn !== winner && cards.some(c => c.revealed && c.role === 'assassin')
+                      ? `Other team found the assassin!`
+                      : `Mission Accomplished`}
+                  </p>
+                </div>
+              )}
+            </div>
+            
             <div className="bg-slate-800/50 p-4 border-b border-slate-700 flex justify-between items-center">
               <h3 className="text-sm font-black uppercase tracking-widest text-slate-300 flex items-center gap-2">
                 <BarChart2 className="w-4 h-4 text-emerald-400" /> Match Stats
@@ -473,22 +619,36 @@ export default function OfflineBoard() {
               </button>
             </div>
             
-            <div className="p-6 grid grid-cols-2 gap-4">
-              <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800 flex flex-col items-center">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Turns</span>
-                <span className="text-2xl font-black text-white">{stats.turns}</span>
+            <div className="p-4 space-y-3">
+              {/* Summary row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800 flex flex-col items-center">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Turns</span>
+                  <span className="text-2xl font-black text-white">{stats.turns}</span>
+                </div>
+                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800 flex flex-col items-center">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Clues</span>
+                  <span className="text-2xl font-black text-white">{stats.clues}</span>
+                </div>
               </div>
-              <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800 flex flex-col items-center">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Clues</span>
-                <span className="text-2xl font-black text-white">{stats.clues}</span>
-              </div>
-              <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800 flex flex-col items-center">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Correct</span>
-                <span className="text-2xl font-black text-emerald-400">{stats.correctGuesses}</span>
-              </div>
-              <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800 flex flex-col items-center">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Wrong</span>
-                <span className="text-2xl font-black text-rose-400">{stats.wrongGuesses}</span>
+              {/* Per-team breakdown */}
+              <div className="bg-slate-950/50 rounded-xl border border-slate-800 overflow-hidden">
+                <div className="grid grid-cols-3 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 border-b border-slate-800">
+                  <span>Team</span><span className="text-center text-emerald-400">✓ Correct</span><span className="text-center text-rose-400">✗ Wrong</span>
+                </div>
+                {(['red', 'blue', ...(numTeams >= 3 ? ['green'] : []), ...(numTeams >= 4 ? ['yellow'] : [])] as string[]).map(team => (
+                  <div key={team} className="grid grid-cols-3 px-4 py-2.5 items-center border-b border-slate-800/50 last:border-0">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-3 h-3 rounded-full ${team === 'red' ? 'bg-red-500' : team === 'blue' ? 'bg-blue-500' : team === 'green' ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                      <span className={cn("text-xs font-bold uppercase", eliminatedTeams.includes(team as any) ? 'text-slate-500 line-through' : 'text-slate-300')}>
+                        {team}
+                      </span>
+                      {eliminatedTeams.includes(team as any) && <Skull className="w-3 h-3 text-rose-500" />}
+                    </div>
+                    <span className="text-center text-sm font-black text-emerald-400">{stats.teamStats?.[team]?.correct ?? 0}</span>
+                    <span className="text-center text-sm font-black text-rose-400">{stats.teamStats?.[team]?.wrong ?? 0}</span>
+                  </div>
+                ))}
               </div>
             </div>
             
@@ -509,6 +669,118 @@ export default function OfflineBoard() {
         <button onClick={() => setShowStats(true)} className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-amber-500 text-amber-950 font-black px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 animate-in slide-in-from-bottom cursor-pointer">
           <BarChart2 className="w-5 h-5" /> Show Results
         </button>
+      )}
+
+      {/* Mobile Drawer Overlay */}
+      {isMobileMenuOpen && (
+        <div className="lg:hidden fixed inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)} />
+          <div className="relative w-72 max-w-[80vw] bg-slate-900 h-full shadow-2xl border-l border-slate-700 flex flex-col animate-in slide-in-from-right overflow-y-auto">
+            <div className="flex justify-between items-center p-4 border-b border-slate-800">
+              <h2 className="text-sm font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                <Menu className="w-4 h-4" /> Game Menu
+              </h2>
+              <button onClick={() => setIsMobileMenuOpen(false)} className="text-slate-400 hover:text-white bg-slate-800 rounded-full p-1 border border-slate-700 cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-4 flex flex-col gap-6">
+              {/* Settings */}
+              <div className="flex flex-col gap-3 bg-slate-800/40 p-3 rounded-xl border border-slate-700/50">
+                <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Settings</h3>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-400 font-bold">Verbal Clues</span>
+                  <button 
+                    onClick={() => { useGameStore.getState().setOfflineVerbalClues(!offlineVerbalClues); }}
+                    className={cn("px-3 py-1 rounded-md text-[10px] font-black uppercase transition-all", offlineVerbalClues ? "bg-emerald-500 text-emerald-950" : "bg-slate-700 text-slate-400")}
+                  >
+                    {offlineVerbalClues ? 'Enabled' : 'Disabled'}
+                  </button>
+                </div>
+                {!winner && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-400 font-bold">Spymaster Map</span>
+                    <button 
+                      onClick={() => { handleToggleMap(); setIsMobileMenuOpen(false); }}
+                      className={cn("px-3 py-1 rounded-md text-[10px] font-black uppercase transition-all", showColors ? "bg-amber-500 text-amber-950" : "bg-slate-700 text-slate-400")}
+                    >
+                      {showColors ? 'Showing' : 'Hidden'}
+                    </button>
+                  </div>
+                )}
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-400 font-bold">Neutral Ends Turn</span>
+                  <button 
+                    onClick={() => useGameStore.getState().toggleGameRule('neutralEndsTurn')}
+                    className={cn("px-3 py-1 rounded-md text-[10px] font-black uppercase transition-all", neutralEndsTurn ? "bg-emerald-500 text-emerald-950" : "bg-slate-700 text-slate-400")}
+                  >
+                    {neutralEndsTurn ? 'On' : 'Off'}
+                  </button>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-400 font-bold">Opponent Ends Turn</span>
+                  <button 
+                    onClick={() => useGameStore.getState().toggleGameRule('opponentEndsTurn')}
+                    className={cn("px-3 py-1 rounded-md text-[10px] font-black uppercase transition-all", opponentEndsTurn ? "bg-emerald-500 text-emerald-950" : "bg-slate-700 text-slate-400")}
+                  >
+                    {opponentEndsTurn ? 'On' : 'Off'}
+                  </button>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-400 font-bold">Assassin Ends Game</span>
+                  <button 
+                    onClick={() => useGameStore.getState().toggleGameRule('assassinEndsGame')}
+                    className={cn("px-3 py-1 rounded-md text-[10px] font-black uppercase transition-all", assassinEndsGame ? "bg-emerald-500 text-emerald-950" : "bg-slate-700 text-slate-400")}
+                  >
+                    {assassinEndsGame ? 'On' : 'Off'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Match Info */}
+              <div className="flex flex-col gap-3 bg-slate-800/40 p-3 rounded-xl border border-slate-700/50">
+                <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Match Info</h3>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-slate-400">Theme</span>
+                  <span className="text-white font-black uppercase tracking-wider">{theme}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-slate-400">Assassins</span>
+                  <span className="text-rose-500 font-black">{assassinCount}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-slate-400">Total Cards</span>
+                  <span className="text-white font-black">{totalCards}</span>
+                </div>
+              </div>
+
+              {/* Team Progress */}
+              <div className="flex flex-col gap-3 bg-slate-800/40 p-3 rounded-xl border border-slate-700/50">
+                <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Progress</h3>
+                {(['red', 'blue', ...(numTeams >= 3 ? ['green'] : []), ...(numTeams >= 4 ? ['yellow'] : [])] as string[]).map(team => (
+                  <div key={team} className="flex justify-between items-center text-xs">
+                     <div className="flex items-center gap-1.5">
+                      <div className={`w-2 h-2 rounded-full ${team === 'red' ? 'bg-red-500' : team === 'blue' ? 'bg-blue-500' : team === 'green' ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                      <span className="text-slate-400 uppercase font-bold">{team}</span>
+                    </div>
+                    <span className="text-white font-black">{remaining[team as TeamId]} Left</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Danger Zone */}
+              <div className="flex flex-col gap-3 mt-auto">
+                <button onClick={() => { setIsMobileMenuOpen(false); handleNewGame(); }} className="w-full px-4 py-3 bg-slate-800 text-slate-300 hover:text-amber-400 border border-slate-700 rounded-xl font-bold flex justify-center items-center gap-2 cursor-pointer transition-colors">
+                  <RefreshCcw className="w-4 h-4" /> Start New Game
+                </button>
+                <button onClick={() => { setIsMobileMenuOpen(false); handleQuit(); }} className="w-full px-4 py-3 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-xl font-bold flex justify-center items-center gap-2 cursor-pointer transition-colors">
+                  <LogOut className="w-4 h-4" /> Exit to Menu
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modals */}
@@ -544,8 +816,7 @@ function OfflineCardItem({ card, isSpymaster, onClick, playable, totalCards }: {
   };
 
   const isTextOnly = !card.image;
-  const forceTextOnly = totalCards > 20 && typeof window !== 'undefined' && window.innerWidth < 640;
-  const effectivelyTextOnly = isTextOnly || forceTextOnly;
+  const effectivelyTextOnly = isTextOnly;
 
   const frontContent = (
     <div className="w-full h-full flex flex-col justify-center items-center p-0.5 sm:p-1 relative">

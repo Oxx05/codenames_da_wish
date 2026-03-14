@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-static';
+
 interface RoomData {
   name: string;
   hostId: string;
@@ -7,6 +9,7 @@ interface RoomData {
   maxPlayers: number;
   status: 'lobby' | 'playing';
   lastSeen: number;
+  hasPassword: boolean;
 }
 
 // In-memory store for rooms
@@ -27,7 +30,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const data = await req.json();
-    const { name, hostId, players, status } = data;
+    const { name, hostId, players, status, hasPassword } = data;
 
     if (!name || !hostId) {
       return NextResponse.json({ error: 'Missing room details' }, { status: 400 });
@@ -39,7 +42,8 @@ export async function POST(req: Request) {
       players: players || 1,
       maxPlayers: 12, // Arbitrary visual max
       status: status || 'lobby',
-      lastSeen: Date.now()
+      lastSeen: Date.now(),
+      hasPassword: hasPassword || false
     };
 
     return NextResponse.json({ success: true, room: rooms[name] });

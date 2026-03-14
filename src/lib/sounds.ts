@@ -44,6 +44,15 @@ export const SFX = {
   neutral: () => {
     playTone(150, 'triangle', 0.2, 0.3); 
   },
+  newClue: () => {
+    // A quick double notification blip (like an incoming radar ping)
+    playTone(880, 'sine', 0.05, 0.1);
+    setTimeout(() => playTone(1760, 'sine', 0.1, 0.1), 80);
+  },
+  cardFlip: () => {
+    // A very short, low percussive "thud" for interacting with a card
+    playTone(80, 'square', 0.05, 0.15);
+  },
   assassin: () => {
     const ctx = getAudioCtx();
     if (!ctx) return;
@@ -54,25 +63,26 @@ export const SFX = {
     const gain = ctx.createGain();
     
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(100, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(10, ctx.currentTime + 0.5);
+    // Glitching frequency sweep downwards
+    osc.frequency.setValueAtTime(300, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(10, ctx.currentTime + 0.8);
     
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(1000, ctx.currentTime);
-    filter.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.5);
+    filter.frequency.setValueAtTime(2000, ctx.currentTime);
+    filter.frequency.exponentialRampToValueAtTime(50, ctx.currentTime + 0.8);
     
-    gain.gain.setValueAtTime(0.5, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+    gain.gain.setValueAtTime(0.8, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8);
     
     osc.connect(filter).connect(gain).connect(ctx.destination);
     osc.start();
-    osc.stop(ctx.currentTime + 0.5);
+    osc.stop(ctx.currentTime + 0.8);
   },
   win: () => {
     // Triumphant Fanfare: C5 -> E5 -> G5 -> C6
     playTone(523.25, 'triangle', 0.2, 0.15); // C5
     setTimeout(() => playTone(659.25, 'triangle', 0.2, 0.15), 150); // E5
     setTimeout(() => playTone(783.99, 'triangle', 0.2, 0.15), 300); // G5
-    setTimeout(() => playTone(1046.50, 'triangle', 0.4, 0.15), 450); // C6
+    setTimeout(() => playTone(1046.50, 'sawtooth', 0.6, 0.15), 450); // C6 stronger finish
   }
 };

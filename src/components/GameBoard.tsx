@@ -3,10 +3,12 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useGameStore, TeamId, Card } from "@/store/gameStore";
 import { usePeerStore } from "@/store/peerStore";
-import { LogOut, RefreshCcw, Hand, Flag, Users, Ban, Crown, Hash, ShieldAlert, Menu, X, Clock, Volume2, VolumeX, Trophy, BarChart2, Eye, MessageCircle, Send, History } from "lucide-react";
+import { Check, Send, Users, LogOut, ArrowLeftRight, RefreshCcw, Eye, Play, Crown, Ban, EyeOff, Clock, ShieldAlert, XCircle, BarChart2, Trophy, ArrowUpRight, Copy, CheckCircle, Skull, Menu, X, Volume2, VolumeX, Flag, Hash, Hand, History, MessageCircle, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Modal } from './Modal';
 import { SFX } from '@/lib/sounds';
+import { themes } from '@/lib/themes';
+import { Confetti } from './Confetti';
 
 export default function GameBoard() {
   const { 
@@ -14,7 +16,7 @@ export default function GameBoard() {
     cards, remaining, currentTurn, turnPhase, clue, guessesLeft, winner, numTeams,
     theme, totalCards, assassinCount, neutralEndsTurn, opponentEndsTurn, assassinEndsGame, turnTimer, turnEndTime,
     sfxEnabled, toggleSFX, stats,
-    chatMessages, clueHistory, addChatMessage
+    chatMessages, clueHistory, addChatMessage, eliminatedTeams
   } = useGameStore();
   const { disconnect, broadcastAction, sendActionToHost } = usePeerStore();
 
@@ -29,6 +31,9 @@ export default function GameBoard() {
   const [showStats, setShowStats] = useState(true);
   const [chatInput, setChatInput] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
+  // Fix 4: flip animation lock
+  const flipLockRef = useRef(false);
+  const flipLockTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const isMyTurn = currentTurn === myTeam && !winner;
   const iAmActiveSpymaster = isMyTurn && myRole === 'spymaster' && turnPhase === 'clue';
@@ -49,6 +54,13 @@ export default function GameBoard() {
 
   const handleCardClick = (index: number) => {
     if (!iAmActiveOperative || cards[index].revealed || winner) return;
+    
+    if (sfxEnabled) SFX.cardFlip();
+
+    // Fix 4: flip lock — delay overlay transitions until animation completes
+    flipLockRef.current = true;
+    if (flipLockTimerRef.current) clearTimeout(flipLockTimerRef.current);
+    flipLockTimerRef.current = setTimeout(() => { flipLockRef.current = false; }, 650);
     const action = { type: 'REVEAL_CARD', index };
     useGameStore.getState().revealCard(index);
     if (isHost) {
@@ -130,10 +142,20 @@ export default function GameBoard() {
 
   useEffect(() => {
     if (winner) {
-      setShowStats(true);
-      if (sfxEnabled) SFX.win();
+      const delay = flipLockRef.current ? 700 : 0;
+      const t = setTimeout(() => {
+        setShowStats(true);
+        if (sfxEnabled) SFX.win();
+      }, delay);
+      return () => clearTimeout(t);
     }
   }, [winner, sfxEnabled]);
+
+  // Sound Effects: New Clue Notification
+  useEffect(() => {
+    if (!sfxEnabled || !clue || !clue.word || winner) return;
+    SFX.newClue();
+  }, [clue, sfxEnabled, winner]);
 
   // Auto-scroll chat
   useEffect(() => {
@@ -167,16 +189,57 @@ export default function GameBoard() {
     else sendActionToHost(action);
   };
 
-  const handleResetLobby = () => {
+   const handleResetLobby = () => {
     if (!isHost) return;
     setModalState({ isOpen: true, type: 'cancel' });
   };
   
-  const confirmResetLobby = () => {
-    const action = { type: 'RESET_LOBBY' } as any;
-    useGameStore.getState().resetToLobby();
-    broadcastAction(action);
+  const confirmResetLobby = async () => {
     setModalState({ isOpen: false, type: null });
+    if (!isHost) return;
+
+    // Instant Restart Logic for Multiplayer (Host only)
+    try {
+      const store = useGameStore.getState();
+      const selectedThemeInfo = themes[theme];
+      const allItems = await selectedThemeInfo.fetchData();
+      const shuffledItems = [...allItems].sort(() => 0.5 - Math.random());
+      const selected = shuffledItems.slice(0, totalCards);
+
+      const roles: TeamId[] = [];
+      const teamNames: TeamId[] = numTeams === 2 ? ['red', 'blue'] : numTeams === 3 ? ['red', 'blue', 'green'] : ['red', 'blue', 'green', 'yellow'];
+      const firstTurnTeam = (theme === 'pokemon' || !store.savedSetupConfig) ? teamNames[Math.floor(Math.random() * teamNames.length)] : (store.savedSetupConfig.firstTeam === 'random' ? teamNames[Math.floor(Math.random() * teamNames.length)] : store.savedSetupConfig.firstTeam);
+
+      teamNames.forEach(t => {
+        const autoPerTeam = Math.floor((totalCards - assassinCount - Math.max(0, 10 - numTeams)) / numTeams);
+        const manualCount = store.savedSetupConfig?.cardsPerTeam?.[t as string] || 0;
+        const count = (manualCount > 0) ? manualCount : (t === firstTurnTeam ? autoPerTeam + 1 : autoPerTeam);
+        for (let i = 0; i < count; i++) roles.push(t as TeamId);
+      });
+      for (let i = 0; i < assassinCount; i++) roles.push('assassin');
+      while (roles.length < totalCards) roles.push('neutral');
+      roles.sort(() => 0.5 - Math.random());
+
+      const cards: Card[] = selected.map((item, i) => ({
+        name: item.name,
+        image: item.image,
+        role: roles[i],
+        revealed: false
+      }));
+
+      store.startGame(cards, firstTurnTeam as TeamId);
+      const newState = useGameStore.getState();
+      broadcastAction({
+        type: 'SYNC_STATE',
+        state: { ...newState, mpStatus: 'playing' }
+      });
+      setShowStats(false);
+    } catch (err) {
+      console.error("Failed to instant restart lobby:", err);
+      // Fallback: traditional reset
+      useGameStore.getState().resetLobby();
+      broadcastAction({ type: 'RESET_LOBBY' });
+    }
   };
 
   const handleLeave = () => {
@@ -213,7 +276,11 @@ export default function GameBoard() {
   const numRows = Math.ceil(cards.length / numCols);
 
   return (
-    <div className="h-[100dvh] bg-slate-950 flex flex-col font-sans overflow-hidden">
+    <div className={cn(
+      "h-[100dvh] bg-slate-950 flex flex-col font-sans overflow-hidden transition-colors duration-1000",
+      winner === 'assassin' ? "animate-interference bg-black" : ""
+    )}>
+      {winner && winner !== 'assassin' && <Confetti />}
       {/* ===== MOBILE HEADER: Single ultra-compact bar ===== */}
       <header className="lg:hidden flex items-center justify-between px-2 py-1 bg-slate-900 border-b border-slate-800 shrink-0 z-10 gap-1.5">
         {/* 1. Hamburger Menu (Far Left) */}
@@ -262,7 +329,7 @@ export default function GameBoard() {
                 </span>
               )}
               <span className={cn("text-[10px] font-extrabold uppercase truncate", teamTextColor[currentTurn])}>
-                {currentTurn[0]} · {turnPhase === 'clue' ? 'Clue' : `Guess(${guessesLeft})`}
+                {currentTurn} · {turnPhase === 'clue' ? 'Giving Clue' : `Guessing (${guessesLeft} left)`}
               </span>
             </div>
           )}
@@ -329,7 +396,7 @@ export default function GameBoard() {
                 </span>
               )}
             </div>
-            <span className="text-xs font-semibold text-slate-400">{turnPhase === 'clue' ? 'Awaiting Clue' : `Guessing (${guessesLeft} left)`}</span>
+            <span className="text-xs font-semibold text-slate-400">{turnPhase === 'clue' ? 'Giving Clue' : `Guessing (${guessesLeft} left)`}</span>
           </div>
         )}
 
@@ -588,13 +655,51 @@ export default function GameBoard() {
 
       {/* End Game Overlay & Stats */}
       {winner && showStats && (
-        <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-500">
-          <div className="absolute top-10 flex flex-col items-center animate-bounce">
-            <Trophy className="w-16 h-16 text-amber-500 mb-2 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]" />
-            <h1 className={cn("text-4xl font-black uppercase tracking-tighter", teamTextColor[winner === 'assassin' ? currentTurn : winner])}>
-              {winner === 'assassin' ? `${currentTurn} Hit Assassin!` : `${winner} Wins!`}
-            </h1>
-          </div>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-700" />
+          <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700/50 rounded-3xl shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden animate-in fade-in zoom-in-95 duration-500 flex flex-col">
+            
+            {/* Header / Winner Banner */}
+            <div className={cn(
+              "p-8 sm:p-10 text-center relative border-b overflow-hidden",
+              winner === 'red' ? 'bg-gradient-to-b from-red-600/40 to-slate-900 border-red-500/50' :
+              winner === 'blue' ? 'bg-gradient-to-b from-blue-600/40 to-slate-900 border-blue-500/50' :
+              winner === 'green' ? 'bg-gradient-to-b from-green-600/40 to-slate-900 border-green-500/50' :
+              winner === 'yellow' ? 'bg-gradient-to-b from-yellow-500/40 to-slate-900 border-yellow-500/50' :
+              'bg-gradient-to-b from-rose-950 to-black border-rose-900' // Assassin
+            )}>
+              {winner === 'assassin' && <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuMDUiLz4KPC9zdmc+')] opacity-20 pointer-events-none"></div>}
+              {winner !== 'assassin' && <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-white/5 blur-3xl rounded-full"></div>}
+
+              {winner === 'assassin' ? (
+                <div className="relative z-10">
+                  <Zap className="w-20 h-20 text-red-500/80 mx-auto mb-4 animate-bounce drop-shadow-[0_0_15px_rgba(239,68,68,0.8)]" />
+                  <h2 className="text-4xl sm:text-5xl font-black uppercase tracking-[0.2em] text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,1)] mb-2">Game Over</h2>
+                  <p className="font-bold text-lg text-red-200/80 bg-red-950/50 inline-block px-4 py-1.5 rounded-full border border-red-900 mt-2">
+                    The Assassin was found
+                  </p>
+                </div>
+              ) : (
+                <div className="relative z-10">
+                  <h2 className={cn("text-5xl sm:text-6xl font-black uppercase tracking-[0.15em] mb-4 drop-shadow-md", 
+                      winner === 'yellow' ? 'text-yellow-400' : 
+                      winner === 'red' ? 'text-red-400' :
+                      winner === 'blue' ? 'text-blue-400' :
+                      'text-green-400'
+                    )}>
+                    {winner} Wins!
+                  </h2>
+                  <p className={cn("font-bold text-lg shadow-inner inline-block px-4 py-1.5 rounded-full border", 
+                      winner === 'yellow' ? 'text-slate-900 bg-yellow-400 border-yellow-500' : 
+                      'text-white bg-slate-800 border-slate-600'
+                    )}>
+                    {assassinEndsGame === false && cards.some(c => c.revealed && c.role === 'assassin')
+                      ? `Other team found the assassin!`
+                      : `Mission Accomplished`}
+                  </p>
+                </div>
+              )}
+            </div>
           
           <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl overflow-hidden mt-10">
             <div className="bg-slate-800/50 p-4 border-b border-slate-700 flex justify-between items-center">
@@ -609,22 +714,34 @@ export default function GameBoard() {
               </button>
             </div>
             
-            <div className="p-6 grid grid-cols-2 gap-4">
-              <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800 flex flex-col items-center">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Turns</span>
-                <span className="text-2xl font-black text-white">{stats.turns}</span>
+            <div className="p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800 flex flex-col items-center">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Turns</span>
+                  <span className="text-2xl font-black text-white">{stats.turns}</span>
+                </div>
+                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800 flex flex-col items-center">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Clues</span>
+                  <span className="text-2xl font-black text-white">{stats.clues}</span>
+                </div>
               </div>
-              <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800 flex flex-col items-center">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Clues</span>
-                <span className="text-2xl font-black text-white">{stats.clues}</span>
-              </div>
-              <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800 flex flex-col items-center">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Correct</span>
-                <span className="text-2xl font-black text-emerald-400">{stats.correctGuesses}</span>
-              </div>
-              <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800 flex flex-col items-center">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Wrong</span>
-                <span className="text-2xl font-black text-rose-400">{stats.wrongGuesses}</span>
+              <div className="bg-slate-950/50 rounded-xl border border-slate-800 overflow-hidden">
+                <div className="grid grid-cols-3 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 border-b border-slate-800">
+                  <span>Team</span><span className="text-center text-emerald-400">✓ Correct</span><span className="text-center text-rose-400">✗ Wrong</span>
+                </div>
+                {(['red', 'blue', ...(numTeams >= 3 ? ['green'] : []), ...(numTeams >= 4 ? ['yellow'] : [])] as string[]).map(team => (
+                  <div key={team} className="grid grid-cols-3 px-4 py-2.5 items-center border-b border-slate-800/50 last:border-0">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-3 h-3 rounded-full ${team === 'red' ? 'bg-red-500' : team === 'blue' ? 'bg-blue-500' : team === 'green' ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                      <span className={cn("text-xs font-bold uppercase tracking-wider", eliminatedTeams.includes(team as any) ? 'text-slate-500 line-through' : 'text-slate-300')}>
+                        {team}
+                      </span>
+                      {eliminatedTeams.includes(team as any) && <Skull className="w-3 h-3 text-rose-500 animate-pulse" />}
+                    </div>
+                    <span className="text-center text-sm font-black text-emerald-400">{stats.teamStats?.[team]?.correct ?? 0}</span>
+                    <span className="text-center text-sm font-black text-rose-400">{stats.teamStats?.[team]?.wrong ?? 0}</span>
+                  </div>
+                ))}
               </div>
             </div>
             
@@ -646,7 +763,8 @@ export default function GameBoard() {
             </div>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
       {/* Button to show stats back after peaking */}
       {winner && !showStats && (
@@ -739,9 +857,84 @@ export default function GameBoard() {
                   </div>
                   <div className="flex justify-between items-center text-sm">
                     <span className="text-slate-400 font-bold">Sound Effects</span>
-                    <span className={cn("font-bold", sfxEnabled ? "text-emerald-400" : "text-slate-500")}>{sfxEnabled ? 'Enabled' : 'Muted'}</span>
+                    <button 
+                      onClick={toggleSFX}
+                      className={cn("px-3 py-1 rounded-md text-[10px] font-black uppercase transition-all", sfxEnabled ? "bg-emerald-500 text-emerald-950" : "bg-slate-700 text-slate-400")}
+                    >
+                      {sfxEnabled ? 'On' : 'Off'}
+                    </button>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-400 font-bold">Neutral Ends Turn</span>
+                    <button 
+                      onClick={() => {
+                        if (!isHost) return;
+                        useGameStore.getState().toggleGameRule('neutralEndsTurn');
+                        broadcastAction({ type: 'SYNC_STATE', state: { neutralEndsTurn: !neutralEndsTurn } });
+                      }}
+                      className={cn("px-3 py-1 rounded-md text-[10px] font-black uppercase transition-all", neutralEndsTurn ? "bg-emerald-500 text-emerald-950" : "bg-slate-700 text-slate-400", !isHost && "opacity-50 cursor-not-allowed")}
+                    >
+                      {neutralEndsTurn ? 'On' : 'Off'}
+                    </button>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-400 font-bold">Opponent Ends Turn</span>
+                    <button 
+                      onClick={() => {
+                        if (!isHost) return;
+                        useGameStore.getState().toggleGameRule('opponentEndsTurn');
+                        broadcastAction({ type: 'SYNC_STATE', state: { opponentEndsTurn: !opponentEndsTurn } });
+                      }}
+                      className={cn("px-3 py-1 rounded-md text-[10px] font-black uppercase transition-all", opponentEndsTurn ? "bg-emerald-500 text-emerald-950" : "bg-slate-700 text-slate-400", !isHost && "opacity-50 cursor-not-allowed")}
+                    >
+                      {opponentEndsTurn ? 'On' : 'Off'}
+                    </button>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-400 font-bold">Assassin Ends Game</span>
+                    <button 
+                      onClick={() => {
+                        if (!isHost) return;
+                        useGameStore.getState().toggleGameRule('assassinEndsGame');
+                        broadcastAction({ type: 'SYNC_STATE', state: { assassinEndsGame: !assassinEndsGame } });
+                      }}
+                      className={cn("px-3 py-1 rounded-md text-[10px] font-black uppercase transition-all", assassinEndsGame ? "bg-emerald-500 text-emerald-950" : "bg-slate-700 text-slate-400", !isHost && "opacity-50 cursor-not-allowed")}
+                    >
+                      {assassinEndsGame ? 'On' : 'Off'}
+                    </button>
                   </div>
                 </div>
+              </div>
+
+              {/* Match Info */}
+              <div className="flex flex-col gap-3 bg-slate-800/40 p-3 rounded-xl border border-slate-700/50">
+                <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Match Info</h3>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-slate-400">Theme</span>
+                  <span className="text-white font-black uppercase tracking-wider">{theme}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-slate-400">Assassins</span>
+                  <span className="text-rose-500 font-black">{assassinCount}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-slate-400">Total Cards</span>
+                  <span className="text-white font-black">{totalCards}</span>
+                </div>
+              </div>
+
+              {/* Team Progress */}
+              <div className="flex flex-col gap-3 bg-slate-800/40 p-3 rounded-xl border border-slate-700/50">
+                <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Progress</h3>
+                {(['red', 'blue', ...(numTeams >= 3 ? ['green'] : []), ...(numTeams >= 4 ? ['yellow'] : [])] as string[]).map(team => (
+                  <div key={team} className="flex justify-between items-center text-xs">
+                     <div className="flex items-center gap-1.5">
+                      <div className={`w-2 h-2 rounded-full ${team === 'red' ? 'bg-red-500' : team === 'blue' ? 'bg-blue-500' : team === 'green' ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                      <span className="text-slate-400 uppercase font-bold">{team}</span>
+                    </div>
+                    <span className="text-white font-black">{(remaining as any)[team]} Left</span>
+                  </div>
+                ))}
               </div>
 
               {players.some(p => p.role === 'spectator') && (
@@ -917,8 +1110,7 @@ function CardItem({ card, isSpymaster, onClick, onContextMenu, playable, markabl
   };
 
   const isTextOnly = !card.image;
-  const forceTextOnly = totalCards > 20 && typeof window !== 'undefined' && window.innerWidth < 640;
-  const effectivelyTextOnly = isTextOnly || forceTextOnly;
+  const effectivelyTextOnly = isTextOnly;
 
   // Front face content (unrevealed side)
   const frontContent = (

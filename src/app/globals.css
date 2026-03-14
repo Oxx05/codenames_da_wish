@@ -126,3 +126,14 @@ input[type="number"] {
 .animate-trophy {
   animation: trophyBounce 1s ease-in-out infinite;
 }
+
+/* Subtle Interference Animation for Assassin Loss */
+@keyframes interference {
+  0% { filter: brightness(1) contrast(1) hue-rotate(0deg); opacity: 1; }
+  50% { filter: brightness(1.2) contrast(1.1) hue-rotate(5deg); opacity: 0.95; }
+  100% { filter: brightness(1) contrast(1) hue-rotate(0deg); opacity: 1; }
+}
+
+.animate-interference {
+  animation: interference 3s ease-in-out infinite;
+}

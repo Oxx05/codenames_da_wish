@@ -10,25 +10,45 @@ interface OfflineSetupProps {
 }
 
 export default function OfflineSetup({ onBack }: OfflineSetupProps) {
-  const [theme, setTheme] = useState<ThemeId>('pokemon');
-  const [numTeams, setNumTeams] = useState(2);
-  const [totalCards, setTotalCards] = useState(20);
-  const [assassinCount, setAssassinCount] = useState(1);
-  const [firstTeam, setFirstTeam] = useState<TeamId | 'random'>('random');
-  const [neutralEndsTurn, setNeutralEndsTurn] = useState(true);
-  const [opponentEndsTurn, setOpponentEndsTurn] = useState(false);
-  const [assassinEndsGame, setAssassinEndsGame] = useState(true);
-  const [turnTimer, setTurnTimer] = useState(0);
-  const [offlineVerbalClues, setOfflineVerbalClues] = useState(true);
+  const savedConfig = useGameStore.getState().savedSetupConfig;
+  
+  const [theme, setTheme] = useState<ThemeId>(useGameStore.getState().theme || 'pokemon');
+  const [numTeams, setNumTeams] = useState(savedConfig?.numTeams || 2);
+  const [totalCards, setTotalCards] = useState(savedConfig?.totalCards || 25);
+  const [assassinCount, setAssassinCount] = useState(savedConfig?.assassinCount || 1);
+  const [cardsPerTeam, setCardsPerTeam] = useState<Record<string, number>>(savedConfig?.cardsPerTeam || { red: 0, blue: 0, green: 0, yellow: 0 });
+  const [firstTeam, setFirstTeam] = useState<TeamId | 'random'>(savedConfig?.firstTeam || 'random');
+  const [neutralEndsTurn, setNeutralEndsTurn] = useState(savedConfig?.neutralEndsTurn ?? true);
+  const [opponentEndsTurn, setOpponentEndsTurn] = useState(savedConfig?.opponentEndsTurn ?? true);
+  const [assassinEndsGame, setAssassinEndsGame] = useState(savedConfig?.assassinEndsGame ?? true);
+  const [turnTimer, setTurnTimer] = useState(savedConfig?.turnTimer || 0);
+  const [offlineVerbalClues, setOfflineVerbalClues] = useState(savedConfig?.offlineVerbalClues ?? true);
+  
   const [isLoading, setIsLoading] = useState(false);
   const [loadingText, setLoadingText] = useState('');
   const [error, setError] = useState('');
+  const [tempValues, setTempValues] = useState<Record<string, string>>({});
 
   const selectedThemeInfo = themes[theme];
   const maxAvailable = selectedThemeInfo?.maxCards || 60;
 
   const totalRequired = (numTeams * 1) + 1 + assassinCount;
-  const isValidGame = totalCards <= maxAvailable && totalCards >= totalRequired && assassinCount < totalCards && numTeams >= 2 && numTeams <= 4;
+  
+  let manualSum = 0;
+  let usingManual = false;
+  const teamNamesCheck = numTeams === 2 ? ['red', 'blue'] : numTeams === 3 ? ['red', 'blue', 'green'] : ['red', 'blue', 'green', 'yellow'];
+  teamNamesCheck.forEach(t => {
+     if (cardsPerTeam[t] && cardsPerTeam[t] > 0) {
+       manualSum += cardsPerTeam[t];
+       usingManual = true;
+     }
+  });
+
+  const isValidGame = totalCards <= maxAvailable && 
+                      totalCards >= totalRequired && 
+                      assassinCount < totalCards && 
+                      numTeams >= 2 && numTeams <= 4 &&
+                      (!usingManual || (manualSum + assassinCount <= totalCards));
 
   const handleStartGame = async () => {
     if (!isValidGame) return;
@@ -48,7 +68,8 @@ export default function OfflineSetup({ onBack }: OfflineSetupProps) {
 
       teamNames.forEach(t => {
         const autoPerTeam = Math.floor((totalCards - assassinCount - Math.max(0, 10 - numTeams)) / numTeams);
-        const count = t === firstTurnTeam ? autoPerTeam + 1 : autoPerTeam;
+        const manualCount = cardsPerTeam[t as string];
+        const count = (manualCount && manualCount > 0) ? manualCount : (t === firstTurnTeam ? autoPerTeam + 1 : autoPerTeam);
         for (let i = 0; i < count; i++) roles.push(t);
       });
       for (let i = 0; i < assassinCount; i++) roles.push('assassin');
@@ -67,7 +88,7 @@ export default function OfflineSetup({ onBack }: OfflineSetupProps) {
 
       // Configure store for offline game
       const store = useGameStore.getState();
-      store.updateSettings({ theme, numTeams, totalCards, assassinCount, firstTeam, neutralEndsTurn, opponentEndsTurn, assassinEndsGame, turnTimer, offlineVerbalClues });
+      store.updateSettings({ theme, numTeams, totalCards, assassinCount, cardsPerTeam, firstTeam, neutralEndsTurn, opponentEndsTurn, assassinEndsGame, turnTimer, offlineVerbalClues });
       store.startGame(cards, firstTurnTeam);
       // Mark as offline mode
       useGameStore.setState({ 
@@ -148,34 +169,46 @@ export default function OfflineSetup({ onBack }: OfflineSetupProps) {
             <div>
               <label className="block text-xs font-bold text-slate-400 mb-1 uppercase tracking-wide text-center">Teams</label>
               <input
-                type="number" min={2} max={4} value={numTeams}
+                type="number" min={2} max={4}
+                value={tempValues.numTeams ?? numTeams}
                 onChange={e => {
-                  const val = parseInt(e.target.value);
+                  const raw = e.target.value;
+                  setTempValues(prev => ({ ...prev, numTeams: raw }));
+                  const val = parseInt(raw);
                   if (!isNaN(val) && val >= 2 && val <= 4) setNumTeams(val);
                 }}
+                onBlur={() => setTempValues(prev => { const { numTeams: _, ...rest } = prev; return rest; })}
                 className="w-full bg-slate-950 border-2 border-slate-800 hover:border-emerald-500/50 rounded-xl px-4 py-3 text-base text-center font-black outline-none transition-all focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 cursor-pointer shadow-inner"
               />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-400 mb-1 uppercase tracking-wide text-center">Cards</label>
               <input
-                type="number" min={numTeams + 1} max={maxAvailable} value={totalCards}
+                type="number" min={numTeams + 1} max={maxAvailable}
+                value={tempValues.totalCards ?? totalCards}
                 onChange={e => {
-                  const val = parseInt(e.target.value);
+                  const raw = e.target.value;
+                  setTempValues(prev => ({ ...prev, totalCards: raw }));
+                  const val = parseInt(raw);
                   if (!isNaN(val) && val >= (numTeams + 1) && val <= maxAvailable) setTotalCards(val);
                 }}
+                onBlur={() => setTempValues(prev => { const { totalCards: _, ...rest } = prev; return rest; })}
                 className="w-full bg-slate-950 border-2 border-slate-800 hover:border-emerald-500/50 rounded-xl px-4 py-3 text-base text-center font-black outline-none transition-all focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 cursor-pointer shadow-inner"
               />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-400 mb-1 uppercase tracking-wide text-center">Assassins</label>
               <input
-                type="number" min={0} max={Math.max(0, totalCards - numTeams - 1)} value={assassinCount}
+                type="number" min={0} max={Math.max(0, totalCards - numTeams - 1)}
+                value={tempValues.assassinCount ?? assassinCount}
                 onChange={e => {
-                  const val = parseInt(e.target.value);
+                  const raw = e.target.value;
+                  setTempValues(prev => ({ ...prev, assassinCount: raw }));
+                  const val = parseInt(raw);
                   const max = Math.max(0, totalCards - numTeams - 1);
                   if (!isNaN(val) && val >= 0 && val <= max) setAssassinCount(val);
                 }}
+                onBlur={() => setTempValues(prev => { const { assassinCount: _, ...rest } = prev; return rest; })}
                 className="w-full bg-slate-950 border-2 border-slate-800 hover:border-emerald-500/50 rounded-xl px-4 py-3 text-base text-center font-black outline-none transition-all focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 cursor-pointer shadow-inner"
               />
             </div>
@@ -274,11 +307,42 @@ export default function OfflineSetup({ onBack }: OfflineSetupProps) {
               onChange={e => setTurnTimer(parseInt(e.target.value))}
               className="bg-slate-800 border-2 border-slate-700 rounded-lg px-2 py-1 text-xs font-bold outline-none cursor-pointer focus:border-emerald-500"
             >
-              <option value={0}>Off ♾️</option>
-              <option value={60}>60s ⏱️</option>
-              <option value={90}>90s ⏱️</option>
-              <option value={120}>120s ⏱️</option>
+              <option value={0}>Off</option>
+              <option value={60}>60s</option>
+              <option value={90}>90s</option>
+              <option value={120}>120s</option>
             </select>
+          </div>
+
+          {/* Per-Team Card Counts (Advanced) */}
+          <div className="pt-4 border-t border-slate-700/50 flex flex-col gap-3">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide text-center">Cards Per Team <span className="text-slate-600">(0 = auto)</span></label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['red', 'blue', ...(numTeams >= 3 ? ['green'] : []), ...(numTeams >= 4 ? ['yellow'] : [])] as TeamId[]).map(team => (
+                <div key={team} className="flex items-center gap-2">
+                  <div className={`w-3 h-3 rounded-full shrink-0 ${team === 'red' ? 'bg-red-500' : team === 'blue' ? 'bg-blue-500' : team === 'green' ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                  <input
+                    type="number"
+                    min={0}
+                    max={totalCards}
+                    value={tempValues[`cards-${team}`] ?? (cardsPerTeam[team] || 0)}
+                    onChange={e => {
+                      const raw = e.target.value;
+                      setTempValues(prev => ({ ...prev, [`cards-${team}`]: raw }));
+                      const val = parseInt(raw);
+                      if (!isNaN(val) && val >= 0 && val <= totalCards) {
+                        setCardsPerTeam(prev => ({ ...prev, [team]: val }));
+                      }
+                    }}
+                    onBlur={() => setTempValues(prev => {
+                      const { [`cards-${team}`]: _, ...rest } = prev;
+                      return rest;
+                    })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-sm text-center font-bold outline-none focus:border-emerald-500 transition-all shadow-inner"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Validation Warnings */}
@@ -290,6 +354,7 @@ export default function OfflineSetup({ onBack }: OfflineSetupProps) {
                 {totalCards < totalRequired && <p>Need more cards! At least {totalRequired} required.</p>}
                 {assassinCount >= totalCards && <p>Too many assassins!</p>}
                 {(numTeams < 2 || numTeams > 4) && <p>Teams must be between 2 and 4.</p>}
+                {usingManual && manualSum + assassinCount > totalCards && <p>Manual card counts ({manualSum}) + assassins ({assassinCount}) exceed total ({totalCards}).</p>}
               </div>
             </div>
           )}

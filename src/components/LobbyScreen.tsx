@@ -4,11 +4,11 @@ import { useGameStore, Player, TeamId, PlayerRole } from "@/store/gameStore";
 import { usePeerStore } from "@/store/peerStore";
 import { useState } from "react";
 import { themes, ThemeId } from "@/lib/themes";
-import { Users, Settings, LogOut, Play, AlertTriangle, Dice5, Dices, Ban, Crown, Copy, CheckCircle } from "lucide-react";
+import { Users, Settings, LogOut, Play, AlertTriangle, Dice5, Dices, Ban, Crown, Copy, CheckCircle, Eye, EyeOff, Lock } from "lucide-react";
 
 export default function LobbyScreen() {
   const { isHost, roomName, players, myPlayerId, theme, numTeams, totalCards, assassinCount, cardsPerTeam, firstTeam, neutralEndsTurn, opponentEndsTurn, assassinEndsGame, turnTimer } = useGameStore();
-  const { disconnect, broadcastAction, sendActionToHost, kickPlayer, transferHost } = usePeerStore();
+  const { disconnect, broadcastAction, sendActionToHost, kickPlayer, transferHost, roomPassword } = usePeerStore();
 
   const me = players.find(p => p.id === myPlayerId);
   const myTeam = me?.team || 'red';
@@ -32,6 +32,8 @@ export default function LobbyScreen() {
   const [isFlipping, setIsFlipping] = useState(false);
   const [tempValues, setTempValues] = useState<Record<string, string>>({});
   const [isCopied, setIsCopied] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isPasswordCopied, setIsPasswordCopied] = useState(false);
 
   const handleCopyLink = () => {
     if (typeof window === 'undefined') return;
@@ -39,6 +41,13 @@ export default function LobbyScreen() {
     navigator.clipboard.writeText(url);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
+  };
+
+  const handleCopyPassword = () => {
+    if (!roomPassword) return;
+    navigator.clipboard.writeText(roomPassword);
+    setIsPasswordCopied(true);
+    setTimeout(() => setIsPasswordCopied(false), 2000);
   };
 
   const handleLeave = () => {
@@ -157,6 +166,22 @@ export default function LobbyScreen() {
             <p className="text-slate-400 text-sm mt-2">
               Select your team and role. The host will start the game.
             </p>
+            {/* Feature 8: Host password widget */}
+            {isHost && roomPassword && (
+              <div className="flex items-center gap-2 mt-2">
+                <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="text-xs text-slate-400 font-bold uppercase tracking-wide">Password:</span>
+                <span className="text-xs font-mono text-amber-300 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                  {showPassword ? roomPassword : '•'.repeat(roomPassword.length)}
+                </span>
+                <button onClick={() => setShowPassword(p => !p)} className="text-slate-500 hover:text-white transition-colors" title={showPassword ? 'Hide' : 'Show'}>
+                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+                <button onClick={handleCopyPassword} className="text-slate-500 hover:text-white transition-colors" title="Copy password">
+                  {isPasswordCopied ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            )}
           </div>
           <button onClick={handleLeave} className="px-5 py-2.5 bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 rounded-xl flex items-center gap-2 transition-all font-semibold shadow-sm cursor-pointer hover:shadow-md">
             <LogOut className="w-5 h-5" /> Leave Room
@@ -403,10 +428,10 @@ export default function LobbyScreen() {
                       }}
                       className="bg-slate-800 border-2 border-slate-700 rounded-lg px-2 py-1 text-xs font-bold outline-none cursor-pointer focus:border-emerald-500"
                     >
-                      <option value={0}>Off ♾️</option>
-                      <option value={60}>60s ⏱️</option>
-                      <option value={90}>90s ⏱️</option>
-                      <option value={120}>120s ⏱️</option>
+                      <option value={0}>Off</option>
+                      <option value={60}>60s</option>
+                      <option value={90}>90s</option>
+                      <option value={120}>120s</option>
                     </select>
                   ) : (
                     <div className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1 text-xs font-bold uppercase text-slate-300">

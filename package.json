@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@capacitor/android": "^8.2.0",
+    "@capacitor/core": "^8.2.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.577.0",
     "next": "16.1.6",
@@ -19,14 +21,18 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.2.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/peerjs": "^0.0.30",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/ui": "^3.2.4",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "happy-dom": "^20.8.4",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.4"
   }
 }

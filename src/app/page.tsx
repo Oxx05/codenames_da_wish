@@ -3,11 +3,12 @@
 import { useState, useEffect } from "react";
 import { useGameStore } from "@/store/gameStore";
 import { usePeerStore } from "@/store/peerStore";
-import { Gamepad2, AlertCircle, Play, LogIn, PlusCircle, Users, RefreshCw, WifiOff } from "lucide-react";
+import { Gamepad2, AlertCircle, Play, LogIn, PlusCircle, Users, RefreshCw, WifiOff, Lock, BookOpen } from "lucide-react";
 import LobbyScreen from "@/components/LobbyScreen";
 import GameBoard from "@/components/GameBoard";
 import OfflineSetup from "@/components/OfflineSetup";
 import OfflineBoard from "@/components/OfflineBoard";
+import ManualPage from "@/components/ManualPage";
 
 export default function App() {
   const mpStatus = useGameStore(s => s.mpStatus);
@@ -18,6 +19,7 @@ export default function App() {
   const roomName = useGameStore(s => s.roomName);
 
   const [showOfflineSetup, setShowOfflineSetup] = useState(false);
+  const [showManual, setShowManual] = useState(false);
 
   // Mobile Back-Button Trap
   useEffect(() => {
@@ -29,6 +31,11 @@ export default function App() {
 
     const handlePopState = (e: PopStateEvent) => {
       // The browser just popped our dummy state. We are still on the page, but the history pointer moved back.
+      if (showManual) {
+        setShowManual(false);
+        return;
+      }
+
       if (showOfflineSetup) {
         setShowOfflineSetup(false);
         return;
@@ -63,7 +70,7 @@ export default function App() {
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [mpStatus, disconnect, isHost, playersCount, showOfflineSetup, roomName]);
+  }, [mpStatus, disconnect, isHost, playersCount, showOfflineSetup, showManual, roomName]);
   
   if (mpStatus === 'lobby') return <LobbyScreen />;
   if (mpStatus === 'playing' && roomName === 'offline') return <OfflineBoard />;
@@ -71,8 +78,12 @@ export default function App() {
   if (mpStatus === 'connecting') return <LoadingScreen message={loadingMessage} />;
 
   if (showOfflineSetup) return <OfflineSetup onBack={() => setShowOfflineSetup(false)} />;
+  if (showManual) return <ManualPage onClose={() => setShowManual(false)} />;
 
-  return <ConnectionMenu onOffline={() => setShowOfflineSetup(true)} />;
+  return <ConnectionMenu 
+    onOffline={() => setShowOfflineSetup(true)} 
+    onManual={() => setShowManual(true)} 
+  />;
 }
 
 function LoadingScreen({ message = "Loading game..." }: { message?: string }) {
@@ -84,7 +95,7 @@ function LoadingScreen({ message = "Loading game..." }: { message?: string }) {
   );
 }
 
-function ConnectionMenu({ onOffline }: { onOffline: () => void }) {
+function ConnectionMenu({ onOffline, onManual }: { onOffline: () => void, onManual: () => void }) {
   const [tab, setTab] = useState<'create' | 'join'>('create');
   const [roomName, setRoomName] = useState('');
   const [password, setPassword] = useState('');
@@ -99,6 +110,8 @@ function ConnectionMenu({ onOffline }: { onOffline: () => void }) {
   const [error, setError] = useState('');
   const [rooms, setRooms] = useState<any[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
+  // Track if the selected join room has a password (to optionally hide the password field)
+  const [selectedRoomHasPassword, setSelectedRoomHasPassword] = useState<boolean | null>(null);
 
   // Save name to localStorage whenever it changes
   useEffect(() => {
@@ -121,7 +134,7 @@ function ConnectionMenu({ onOffline }: { onOffline: () => void }) {
 
   const initializeHost = usePeerStore(s => s.initializeHost);
   const joinRoomAction = usePeerStore(s => s.joinRoom);
-  const joinLobby = useGameStore(s => s.joinLobby);
+  const setRoomDetails = useGameStore(s => s.setRoomDetails);
   const updatePlayers = useGameStore(s => s.updatePlayers);
 
   const handleCreate = async () => {
@@ -133,7 +146,7 @@ function ConnectionMenu({ onOffline }: { onOffline: () => void }) {
     setError('');
     try {
       const id = await initializeHost(roomName, password);
-      joinLobby(roomName, true, id);
+      setRoomDetails(roomName, true, id);
       updatePlayers([{
         id, name: playerName, team: 'red', role: 'spymaster', isHost: true
       }]);
@@ -204,11 +217,14 @@ function ConnectionMenu({ onOffline }: { onOffline: () => void }) {
             rooms.map((room) => (
               <div 
                 key={room.name} 
-                onClick={() => { setRoomName(room.name); setTab('join'); }}
+                onClick={() => { setRoomName(room.name); setTab('join'); setSelectedRoomHasPassword(room.hasPassword ?? null); }}
                 className="bg-slate-900 border border-slate-700 hover:border-emerald-500/50 p-4 rounded-xl cursor-pointer transition-all group hover:bg-slate-900/80"
               >
                 <div className="flex justify-between items-start mb-2">
-                  <h3 className="text-white font-bold group-hover:text-emerald-400 transition-colors">{room.name}</h3>
+                  <h3 className="text-white font-bold group-hover:text-emerald-400 transition-colors flex items-center gap-2">
+                    {room.hasPassword && <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+                    {room.name}
+                  </h3>
                   <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${room.status === 'playing' ? 'bg-amber-500/20 text-amber-500' : 'bg-emerald-500/20 text-emerald-400'}`}>
                     {room.status === 'playing' ? 'In Game' : 'Lobby'}
                   </span>
@@ -282,6 +298,8 @@ function ConnectionMenu({ onOffline }: { onOffline: () => void }) {
             <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">
               Password {tab === 'create' ? '(Optional)' : ''}
             </label>
+            {/* If joining a specific room that has no password, don't show the input */}
+            {!(tab === 'join' && selectedRoomHasPassword === false) && (
             <input 
               type="password" 
               value={password}
@@ -292,6 +310,10 @@ function ConnectionMenu({ onOffline }: { onOffline: () => void }) {
                 if (e.key === 'Enter') tab === 'create' ? handleCreate() : handleJoin();
               }}
             />
+            )}
+            {tab === 'join' && selectedRoomHasPassword === false && (
+              <p className="text-xs text-slate-500 italic px-1">This room has no password.</p>
+            )}
           </div>
 
           <button 
@@ -314,6 +336,13 @@ function ConnectionMenu({ onOffline }: { onOffline: () => void }) {
           >
             <WifiOff className="w-5 h-5" /> Play Offline (Pass &amp; Play)
           </button>
+
+          <button
+            onClick={onManual}
+            className="w-full mt-3 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 font-bold py-3.5 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer hover:border-indigo-500/60"
+          >
+            <BookOpen className="w-5 h-5" /> How to Play / Manual
+          </button>
         </div>
       </div>
       
@@ -332,10 +361,13 @@ function ConnectionMenu({ onOffline }: { onOffline: () => void }) {
               rooms.map(room => (
                 <button 
                   key={room.name} 
-                  onClick={() => { setRoomName(room.name); setTab('join'); }}
+                  onClick={() => { setRoomName(room.name); setTab('join'); setSelectedRoomHasPassword(room.hasPassword ?? null); }}
                   className="shrink-0 snap-center bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-sm text-left cursor-pointer hover:border-emerald-500 min-w-[140px] shadow-sm transition-all"
                 >
-                  <div className="font-bold text-slate-200 truncate">{room.name}</div>
+                  <div className="font-bold text-slate-200 truncate flex items-center gap-1.5">
+                    {room.hasPassword && <Lock className="w-3 h-3 text-amber-400 shrink-0" />}
+                    {room.name}
+                  </div>
                   <div className="text-xs text-slate-400 mt-1 flex justify-between">{room.players} players</div>
                 </button>
               ))

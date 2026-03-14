@@ -27,6 +27,7 @@ interface PeerState {
   peer: Peer | null;
   connections: DataConnection[]; // For Host
   hostConn: DataConnection | null; // For Guest
+  roomPassword: string; // Visible to host for sharing
   
   initializeHost: (roomName: string, password?: string) => Promise<string>;
   joinRoom: (roomName: string, playerName: string, password?: string) => Promise<{ success: boolean; reason?: string }>;
@@ -96,13 +97,14 @@ export const usePeerStore = create<PeerState>((set, get) => {
             type: 'JOIN_ACCEPTED', 
             state: { 
               players: newPlayers, 
-              settings: { theme: gameStore.theme, numTeams: gameStore.numTeams, totalCards: gameStore.totalCards, assassinCount: gameStore.assassinCount, firstTeam: gameStore.firstTeam, cardsPerTeam: gameStore.cardsPerTeam, neutralEndsTurn: gameStore.neutralEndsTurn, opponentEndsTurn: gameStore.opponentEndsTurn, turnTimer: gameStore.turnTimer },
+              settings: { theme: gameStore.theme, numTeams: gameStore.numTeams, totalCards: gameStore.totalCards, assassinCount: gameStore.assassinCount, firstTeam: gameStore.firstTeam, cardsPerTeam: gameStore.cardsPerTeam, neutralEndsTurn: gameStore.neutralEndsTurn, opponentEndsTurn: gameStore.opponentEndsTurn, assassinEndsGame: gameStore.assassinEndsGame, turnTimer: gameStore.turnTimer },
               cards: gameStore.cards,
               turnPhase: gameStore.turnPhase,
               currentTurn: gameStore.currentTurn,
               clue: gameStore.clue,
               guessesLeft: gameStore.guessesLeft,
               remaining: gameStore.remaining,
+              eliminatedTeams: gameStore.eliminatedTeams,
               winner: gameStore.winner,
               mpStatus: gameStore.mpStatus
             }
@@ -152,6 +154,12 @@ export const usePeerStore = create<PeerState>((set, get) => {
         } else {
           gameStore.updateSettings(action.settings);
           get().broadcastAction(action);
+          // Also sync global rules that might have changed
+          get().broadcastAction({ type: 'SYNC_STATE', state: { 
+            neutralEndsTurn: gameStore.neutralEndsTurn, 
+            opponentEndsTurn: gameStore.opponentEndsTurn, 
+            assassinEndsGame: gameStore.assassinEndsGame 
+          }});
         }
         break;
 
@@ -175,6 +183,7 @@ export const usePeerStore = create<PeerState>((set, get) => {
               turnPhase: newState.turnPhase,
               currentTurn: newState.currentTurn,
               guessesLeft: newState.guessesLeft,
+              eliminatedTeams: newState.eliminatedTeams,
               winner: newState.winner,
               turnEndTime: newState.turnEndTime
             } 
@@ -196,7 +205,7 @@ export const usePeerStore = create<PeerState>((set, get) => {
         gameStore.endTurn();
         if (isHost) {
           const s = useGameStore.getState();
-          get().broadcastAction({ type: 'SYNC_STATE', state: { turnPhase: s.turnPhase, currentTurn: s.currentTurn, guessesLeft: s.guessesLeft, clue: s.clue, turnEndTime: s.turnEndTime } });
+          get().broadcastAction({ type: 'SYNC_STATE', state: { turnPhase: s.turnPhase, currentTurn: s.currentTurn, eliminatedTeams: s.eliminatedTeams, guessesLeft: s.guessesLeft, clue: s.clue, turnEndTime: s.turnEndTime } });
         }
         break;
 
@@ -209,7 +218,7 @@ export const usePeerStore = create<PeerState>((set, get) => {
 
       case 'RESET_LOBBY':
         if (!isHost) {
-          gameStore.resetToLobby();
+          gameStore.resetLobby();
         }
         break;
 
@@ -276,10 +285,12 @@ export const usePeerStore = create<PeerState>((set, get) => {
     peer: null,
     connections: [],
     hostConn: null,
+    roomPassword: '',
 
     initializeHost: async (roomName: string, password?: string) => {
       const { Peer } = await import('peerjs');
       expectedPassword = password || '';
+      set({ roomPassword: password || '' });
       const peerId = ROOM_PREFIX + roomName;
 
       return new Promise((resolve, reject) => {
@@ -299,7 +310,8 @@ export const usePeerStore = create<PeerState>((set, get) => {
                  name: roomName,
                  hostId: id,
                  players: gs.players.length || 1,
-                 status: gs.mpStatus === 'playing' ? 'playing' : 'lobby'
+                 status: gs.mpStatus === 'playing' ? 'playing' : 'lobby',
+                 hasPassword: !!(password)
                })
              }).catch(() => {});
           };
@@ -365,7 +377,7 @@ export const usePeerStore = create<PeerState>((set, get) => {
             
             // Send JOIN action with player details
             const myPlayer: Player = { id, name: playerName, team: 'blue', role: 'operative', isHost: false };
-            useGameStore.getState().joinLobby(roomName, false, id);
+            useGameStore.getState().setRoomDetails(roomName, false, id);
             
             conn.send({ type: 'JOIN', player: myPlayer, password });
             // Don't resolve here — wait for JOIN_ACCEPTED or JOIN_REJECTED
@@ -433,7 +445,7 @@ export const usePeerStore = create<PeerState>((set, get) => {
         window.removeEventListener('beforeunload', (peer as any)._customUnloadHandler);
       }
       
-      set({ peer: null, connections: [], hostConn: null });
+      set({ peer: null, connections: [], hostConn: null, roomPassword: '' });
       if (!options.keepGameState) {
         useGameStore.getState().disconnect();
       }
