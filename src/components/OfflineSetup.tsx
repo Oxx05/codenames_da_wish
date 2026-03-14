@@ -13,16 +13,16 @@ export default function OfflineSetup({ onBack }: OfflineSetupProps) {
   const savedConfig = useGameStore.getState().savedSetupConfig;
   
   const [theme, setTheme] = useState<ThemeId>(useGameStore.getState().theme || 'pokemon');
-  const [numTeams, setNumTeams] = useState(savedConfig?.numTeams || 2);
-  const [totalCards, setTotalCards] = useState(savedConfig?.totalCards || 25);
-  const [assassinCount, setAssassinCount] = useState(savedConfig?.assassinCount || 1);
-  const [cardsPerTeam, setCardsPerTeam] = useState<Record<string, number>>(savedConfig?.cardsPerTeam || { red: 0, blue: 0, green: 0, yellow: 0 });
-  const [firstTeam, setFirstTeam] = useState<TeamId | 'random'>(savedConfig?.firstTeam || 'random');
-  const [neutralEndsTurn, setNeutralEndsTurn] = useState(savedConfig?.neutralEndsTurn ?? true);
-  const [opponentEndsTurn, setOpponentEndsTurn] = useState(savedConfig?.opponentEndsTurn ?? true);
-  const [assassinEndsGame, setAssassinEndsGame] = useState(savedConfig?.assassinEndsGame ?? true);
-  const [turnTimer, setTurnTimer] = useState(savedConfig?.turnTimer || 0);
-  const [offlineVerbalClues, setOfflineVerbalClues] = useState(savedConfig?.offlineVerbalClues ?? true);
+  const [numTeams, setNumTeams] = useState(savedConfig.numTeams);
+  const [totalCards, setTotalCards] = useState(savedConfig.totalCards);
+  const [assassinCount, setAssassinCount] = useState(savedConfig.assassinCount);
+  const [cardsPerTeam, setCardsPerTeam] = useState<Record<string, number>>(savedConfig.cardsPerTeam || { red: 0, blue: 0, green: 0, yellow: 0 });
+  const [firstTeam, setFirstTeam] = useState<TeamId | 'random'>(savedConfig.firstTeam);
+  const [neutralEndsTurn, setNeutralEndsTurn] = useState(savedConfig.neutralEndsTurn);
+  const [opponentEndsTurn, setOpponentEndsTurn] = useState(savedConfig.opponentEndsTurn);
+  const [assassinEndsGame, setAssassinEndsGame] = useState(savedConfig.assassinEndsGame);
+  const [turnTimer, setTurnTimer] = useState(savedConfig.turnTimer);
+  const [offlineVerbalClues, setOfflineVerbalClues] = useState(savedConfig.offlineVerbalClues);
   
   const [isLoading, setIsLoading] = useState(false);
   const [loadingText, setLoadingText] = useState('');

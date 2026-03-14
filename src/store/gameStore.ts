@@ -185,8 +185,19 @@ export const useGameStore = create<GameState>((set, get) => ({
   updatePlayers: (players) => set({ players }),
 
   updateSettings: (settings) => set((state) => {
-    // Only host changes settings normally, but we apply to state for guests too
-    return { ...state, ...settings };
+    // Persistent config: update savedSetupConfig with any matching keys from settings
+    const nextSaved = { ...state.savedSetupConfig };
+    Object.keys(settings).forEach(key => {
+      if (key in nextSaved) {
+        (nextSaved as any)[key] = (settings as any)[key];
+      }
+    });
+
+    return { 
+      ...state, 
+      ...settings,
+      savedSetupConfig: nextSaved
+    };
   }),
 
   toggleSFX: () => set((state) => ({ sfxEnabled: !state.sfxEnabled })),
