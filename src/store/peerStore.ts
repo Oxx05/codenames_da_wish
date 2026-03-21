@@ -13,10 +13,10 @@ type GameAction =
   | { type: 'UPDATE_PLAYER'; player: Player }
   | { type: 'UPDATE_SETTINGS'; settings: any }
   | { type: 'START_GAME'; cards: any[]; firstTurn: any }
-  | { type: 'GIVE_CLUE'; clue: string; count: number }
-  | { type: 'REVEAL_CARD'; index: number }
+  | { type: 'GIVE_CLUE'; clue: string; count: number; playerName?: string; playerTeam?: TeamId }
+  | { type: 'REVEAL_CARD'; index: number; playerName?: string; playerTeam?: TeamId }
   | { type: 'SET_MARK'; index: number; team: TeamId; remove: boolean }
-  | { type: 'END_TURN' }
+  | { type: 'END_TURN'; playerName?: string; playerTeam?: TeamId }
   | { type: 'END_GAME'; winner: string }
   | { type: 'RESET_LOBBY' }
   | { type: 'KICK' }
@@ -106,7 +106,8 @@ export const usePeerStore = create<PeerState>((set, get) => {
               remaining: gameStore.remaining,
               eliminatedTeams: gameStore.eliminatedTeams,
               winner: gameStore.winner,
-              mpStatus: gameStore.mpStatus
+              mpStatus: gameStore.mpStatus,
+              gameLog: gameStore.gameLog
             }
           });
           
@@ -165,18 +166,25 @@ export const usePeerStore = create<PeerState>((set, get) => {
 
       case 'GIVE_CLUE':
         gameStore.giveClue(action.clue, action.count);
+        if (action.playerName) {
+          useGameStore.getState().addGameLogEntry({ type: 'clue', playerName: action.playerName, team: action.playerTeam!, word: action.clue, count: action.count });
+        }
         if (isHost) {
           const s = useGameStore.getState();
-          get().broadcastAction({ type: 'SYNC_STATE', state: { turnPhase: s.turnPhase, clue: s.clue, guessesLeft: s.guessesLeft, turnEndTime: s.turnEndTime } });
+          get().broadcastAction({ type: 'SYNC_STATE', state: { turnPhase: s.turnPhase, clue: s.clue, guessesLeft: s.guessesLeft, turnEndTime: s.turnEndTime, gameLog: s.gameLog } });
         }
         break;
 
-      case 'REVEAL_CARD':
+      case 'REVEAL_CARD': {
+        const cardBefore = gameStore.cards[action.index];
         gameStore.revealCard(action.index);
+        if (action.playerName && cardBefore) {
+          useGameStore.getState().addGameLogEntry({ type: 'reveal', playerName: action.playerName, team: action.playerTeam!, cardName: cardBefore.name, cardRole: cardBefore.role });
+        }
         if (isHost) {
           const newState = useGameStore.getState();
-          get().broadcastAction({ 
-            type: 'SYNC_STATE', 
+          get().broadcastAction({
+            type: 'SYNC_STATE',
             state: {
               cards: newState.cards,
               remaining: newState.remaining,
@@ -185,12 +193,14 @@ export const usePeerStore = create<PeerState>((set, get) => {
               guessesLeft: newState.guessesLeft,
               eliminatedTeams: newState.eliminatedTeams,
               winner: newState.winner,
-              turnEndTime: newState.turnEndTime
-            } 
+              turnEndTime: newState.turnEndTime,
+              gameLog: newState.gameLog
+            }
           });
         }
         else get().sendActionToHost(action);
         break;
+      }
 
       case 'SET_MARK':
         if (isHost) {
@@ -203,9 +213,12 @@ export const usePeerStore = create<PeerState>((set, get) => {
 
       case 'END_TURN':
         gameStore.endTurn();
+        if (action.playerName) {
+          useGameStore.getState().addGameLogEntry({ type: 'pass', playerName: action.playerName, team: action.playerTeam! });
+        }
         if (isHost) {
           const s = useGameStore.getState();
-          get().broadcastAction({ type: 'SYNC_STATE', state: { turnPhase: s.turnPhase, currentTurn: s.currentTurn, eliminatedTeams: s.eliminatedTeams, guessesLeft: s.guessesLeft, clue: s.clue, turnEndTime: s.turnEndTime } });
+          get().broadcastAction({ type: 'SYNC_STATE', state: { turnPhase: s.turnPhase, currentTurn: s.currentTurn, eliminatedTeams: s.eliminatedTeams, guessesLeft: s.guessesLeft, clue: s.clue, turnEndTime: s.turnEndTime, gameLog: s.gameLog } });
         }
         break;
 

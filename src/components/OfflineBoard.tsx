@@ -14,7 +14,7 @@ export default function OfflineBoard() {
     cards, remaining, currentTurn, turnPhase, clue, guessesLeft, winner, numTeams,
     theme, totalCards, assassinCount, neutralEndsTurn, opponentEndsTurn, assassinEndsGame, turnTimer, turnEndTime,
     sfxEnabled, toggleSFX, stats,
-    clueHistory, offlineVerbalClues, eliminatedTeams
+    clueHistory, gameLog, offlineVerbalClues, eliminatedTeams
   } = useGameStore();
 
   // Show/Hide spymaster color overlay — auto-follows phase, but can be toggled manually
@@ -137,9 +137,9 @@ export default function OfflineBoard() {
 
   const handleDismissHandoff = () => {
     setIsHandoff(false);
-    // Fix 3: in text mode, auto-trigger the map confirm dialog for the spymaster
+    // Directly reveal map for spymaster — no confirmation modal needed since the device was explicitly handed over
     if (isCluePhase && !offlineVerbalClues) {
-      setConfirmShowMap(true);
+      setShowColors(true);
     }
   };
 
@@ -163,7 +163,9 @@ export default function OfflineBoard() {
   const handleGiveClue = (e: React.FormEvent) => {
     e.preventDefault();
     if (turnPhase !== 'clue' || !clueWord.trim()) return;
-    useGameStore.getState().giveClue(clueWord.trim().toUpperCase(), clueCount);
+    const word = clueWord.trim().toUpperCase();
+    useGameStore.getState().addGameLogEntry({ type: 'clue', playerName: currentTurn.toUpperCase(), team: currentTurn, word, count: clueCount });
+    useGameStore.getState().giveClue(word, clueCount);
     setClueWord('');
     setClueCount(1);
     // Handoff will be triggered by the useEffect on turnPhase change
@@ -171,18 +173,21 @@ export default function OfflineBoard() {
 
   const handleCardClick = (index: number) => {
     if (showColors || turnPhase !== 'guess' || cards[index].revealed || winner) return;
-    
+
     if (sfxEnabled) SFX.cardFlip();
-    
+
     // Fix 4: set a flip lock so overlays wait for the card animation to finish (~650ms)
     flipLockRef.current = true;
     if (flipLockTimerRef.current) clearTimeout(flipLockTimerRef.current);
     flipLockTimerRef.current = setTimeout(() => { flipLockRef.current = false; }, 650);
+    const cardBefore = cards[index];
+    useGameStore.getState().addGameLogEntry({ type: 'reveal', playerName: currentTurn.toUpperCase(), team: currentTurn, cardName: cardBefore.name, cardRole: cardBefore.role });
     useGameStore.getState().revealCard(index);
   };
 
   const handleEndTurn = () => {
     if (turnPhase !== 'guess' || winner) return;
+    useGameStore.getState().addGameLogEntry({ type: 'pass', playerName: currentTurn.toUpperCase(), team: currentTurn });
     useGameStore.getState().endTurn();
     // Handoff will be triggered by the useEffect on turn change
   };
@@ -251,6 +256,11 @@ export default function OfflineBoard() {
     red: 'text-red-400', blue: 'text-blue-400', green: 'text-green-400', yellow: 'text-yellow-400',
   };
 
+  const cardRoleColor: Record<string, string> = {
+    red: 'text-red-400', blue: 'text-blue-400', green: 'text-green-400', yellow: 'text-yellow-400',
+    neutral: 'text-stone-400', assassin: 'text-rose-500',
+  };
+
   const getGridCols = (total: number): number => {
     const sqrt = Math.sqrt(total);
     return Math.ceil(sqrt);
@@ -287,10 +297,15 @@ export default function OfflineBoard() {
         </p>
         <button
           onClick={handleDismissHandoff}
-          className="mt-4 bg-emerald-500 hover:bg-emerald-400 text-white font-black text-lg uppercase tracking-wider px-10 py-4 rounded-2xl shadow-2xl shadow-emerald-900/30 transition-all active:scale-95 cursor-pointer flex items-center gap-3"
+          className={cn(
+            "mt-4 font-black text-lg uppercase tracking-wider px-10 py-4 rounded-2xl shadow-2xl transition-all active:scale-95 cursor-pointer flex items-center gap-3",
+            isCluePhase && !offlineVerbalClues
+              ? 'bg-amber-500 hover:bg-amber-400 text-amber-950 shadow-amber-900/30'
+              : 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-emerald-900/30'
+          )}
         >
-          {isCluePhase ? <Eye className="w-6 h-6" /> : <EyeOff className="w-6 h-6" />}
-          I&apos;m Ready
+          {isCluePhase && !offlineVerbalClues ? <Eye className="w-6 h-6" /> : <EyeOff className="w-6 h-6" />}
+          {isCluePhase && !offlineVerbalClues ? 'Reveal Spymaster Map' : "I'm Ready"}
         </button>
       </div>
     );
@@ -361,19 +376,24 @@ export default function OfflineBoard() {
 
         {/* Actions Area */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          <button
-            onClick={handleToggleMap}
-            className={cn(
-              "p-2 rounded-lg border transition-all cursor-pointer flex items-center gap-1",
-              showColors
-                ? 'bg-amber-500/20 border-amber-500/50 text-amber-400 hover:bg-amber-500/30'
-                : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'
-            )}
-            title="Spymaster Map (Requires Confirmation)"
-          >
-            {showColors ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-            <span className="hidden sm:inline text-[10px] font-bold uppercase">Map</span>
-          </button>
+          {/* Map button: only visible when map is showing (to hide it) or during clue phase (to reveal it) */}
+          {(showColors || isCluePhase) && !winner && (
+            <button
+              onClick={handleToggleMap}
+              className={cn(
+                "p-2 rounded-lg border transition-all cursor-pointer flex items-center gap-1.5",
+                showColors
+                  ? 'bg-amber-500/20 border-amber-500/50 text-amber-400 hover:bg-amber-500/30'
+                  : 'bg-emerald-600/20 border-emerald-500/50 text-emerald-400 hover:bg-emerald-600/30 animate-pulse'
+              )}
+              title={showColors ? "Hide Spymaster Map" : "Show Spymaster Map"}
+            >
+              {showColors ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+              <span className={cn("text-[10px] font-bold uppercase", !showColors ? 'inline' : 'hidden sm:inline')}>
+                {showColors ? 'Hide' : 'Map'}
+              </span>
+            </button>
+          )}
           
           <button onClick={toggleSFX} className="p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 cursor-pointer" title={sfxEnabled ? "Mute" : "Unmute"}>
             {sfxEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4 text-rose-500" />}
@@ -438,34 +458,54 @@ export default function OfflineBoard() {
             </div>
           </div>
 
-          {/* Map Toggle (Desktop) */}
-          {!winner && (
+          {/* Map Toggle (Desktop) — only when map is showing or in clue phase */}
+          {!winner && (showColors || isCluePhase) && (
             <button
               onClick={handleToggleMap}
               className={cn(
                 "w-full p-3 rounded-xl border-2 text-center font-black uppercase tracking-wider text-sm transition-all cursor-pointer",
                 showColors
                   ? 'bg-amber-500/10 border-amber-500/50 text-amber-400 hover:bg-amber-500/20'
-                  : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'
+                  : 'bg-emerald-600/10 border-emerald-500/50 text-emerald-400 hover:bg-emerald-600/20 animate-pulse'
               )}
             >
-              {showColors ? '🔍 Map Visible' : '🎯 Map Hidden'}
-              <span className="block text-[10px] font-bold text-slate-500 mt-1">Click to toggle</span>
+              {showColors ? '🔍 Map Visible' : '🎯 Reveal Map'}
+              <span className="block text-[10px] font-bold text-slate-500 mt-1">
+                {showColors ? 'Click to hide' : 'Spymaster only'}
+              </span>
             </button>
           )}
 
-          {/* Clue History */}
-          {clueHistory.length > 0 && (
+          {/* Game Log */}
+          {gameLog.length > 0 && (
             <div className="bg-slate-800/40 p-3 rounded-xl border border-slate-700/50">
               <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-2">
-                <History className="w-3 h-3" /> Clue Log
+                <History className="w-3 h-3" /> Game Log
               </h4>
-              <div className="flex flex-col gap-1 max-h-32 overflow-y-auto custom-scrollbar">
-                {clueHistory.map((c, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs">
-                    <span className={cn("w-2 h-2 rounded-full shrink-0", c.team === 'red' ? 'bg-red-500' : c.team === 'blue' ? 'bg-blue-500' : c.team === 'green' ? 'bg-green-500' : 'bg-yellow-500')} />
-                    <span className="font-black text-slate-200 uppercase">{c.word}</span>
-                    <span className="text-slate-500 font-bold">{c.count}</span>
+              <div className="flex flex-col gap-1 max-h-40 overflow-y-auto custom-scrollbar">
+                {gameLog.map((entry) => (
+                  <div key={entry.id} className="text-[11px] leading-snug">
+                    {entry.type === 'clue' && (
+                      <span>
+                        <span className={cn('font-bold', teamTextColor[entry.team])}>{entry.playerName}</span>
+                        {' '}deu a pista{' '}
+                        <span className="font-black text-white">{entry.word}</span>
+                        {' '}<span className="text-slate-400">{entry.count}</span>
+                      </span>
+                    )}
+                    {entry.type === 'reveal' && (
+                      <span>
+                        <span className={cn('font-bold', teamTextColor[entry.team])}>{entry.playerName}</span>
+                        {' '}escolheu{' '}
+                        <span className={cn('font-black', cardRoleColor[entry.cardRole!])}>{entry.cardName}</span>
+                      </span>
+                    )}
+                    {entry.type === 'pass' && (
+                      <span>
+                        <span className={cn('font-bold', teamTextColor[entry.team])}>{entry.playerName}</span>
+                        {' '}passou a vez
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -541,18 +581,25 @@ export default function OfflineBoard() {
           </button>
         )}
 
-        {/* Spymaster waiting hint */}
+        {/* Map showing + guess phase: prompt to hide */}
         {showColors && isGuessPhase && !winner && (
-          <span className="text-slate-500 text-xs font-medium flex items-center gap-1.5">
-            {offlineVerbalClues ? 'Discuss & Guess...' : 'Operatives are guessing...'} <span className="text-[10px] text-slate-600">(hide map to play)</span>
-          </span>
+          <button
+            onClick={() => setShowColors(false)}
+            className="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 hover:text-white font-bold px-4 py-1.5 sm:px-5 sm:py-2 rounded-lg text-xs sm:text-sm flex items-center gap-1.5 cursor-pointer transition-all"
+          >
+            <EyeOff className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            {offlineVerbalClues ? 'Hide map — start guessing' : 'Hide map — pass to operatives'}
+          </button>
         )}
 
-        {/* Clue phase with map hidden — prompt to show */}
+        {/* Clue phase, map hidden — big CTA */}
         {!showColors && isCluePhase && !winner && (
-          <span className="text-slate-500 text-xs font-medium flex items-center gap-1.5">
-            Spymaster: show the map to give a clue
-          </span>
+          <button
+            onClick={handleToggleMap}
+            className="w-full max-w-sm bg-emerald-600/20 hover:bg-emerald-600/30 active:scale-95 border border-emerald-500/40 text-emerald-400 font-black py-2 sm:py-2.5 px-4 rounded-xl text-xs sm:text-sm uppercase tracking-wide flex items-center justify-center gap-2 cursor-pointer transition-all"
+          >
+            <Eye className="w-4 h-4" /> Reveal Spymaster Map
+          </button>
         )}
 
         {/* Winner */}
@@ -698,12 +745,12 @@ export default function OfflineBoard() {
                     {offlineVerbalClues ? 'Enabled' : 'Disabled'}
                   </button>
                 </div>
-                {!winner && (
+                {!winner && (showColors || isCluePhase) && (
                   <div className="flex justify-between items-center text-sm">
                     <span className="text-slate-400 font-bold">Spymaster Map</span>
-                    <button 
+                    <button
                       onClick={() => { handleToggleMap(); setIsMobileMenuOpen(false); }}
-                      className={cn("px-3 py-1 rounded-md text-[10px] font-black uppercase transition-all", showColors ? "bg-amber-500 text-amber-950" : "bg-slate-700 text-slate-400")}
+                      className={cn("px-3 py-1 rounded-md text-[10px] font-black uppercase transition-all", showColors ? "bg-amber-500 text-amber-950" : "bg-emerald-500/20 text-emerald-400")}
                     >
                       {showColors ? 'Showing' : 'Hidden'}
                     </button>
@@ -768,6 +815,42 @@ export default function OfflineBoard() {
                   </div>
                 ))}
               </div>
+
+              {/* Game Log (Mobile) */}
+              {gameLog.length > 0 && (
+                <div className="bg-slate-800/40 p-3 rounded-xl border border-slate-700/50">
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                    <History className="w-3.5 h-3.5" /> Game Log
+                  </h4>
+                  <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto custom-scrollbar">
+                    {gameLog.map((entry) => (
+                      <div key={entry.id} className="text-xs leading-snug">
+                        {entry.type === 'clue' && (
+                          <span>
+                            <span className={cn('font-bold', teamTextColor[entry.team])}>{entry.playerName}</span>
+                            {' '}deu a pista{' '}
+                            <span className="font-black text-white">{entry.word}</span>
+                            {' '}<span className="text-slate-400">{entry.count}</span>
+                          </span>
+                        )}
+                        {entry.type === 'reveal' && (
+                          <span>
+                            <span className={cn('font-bold', teamTextColor[entry.team])}>{entry.playerName}</span>
+                            {' '}escolheu{' '}
+                            <span className={cn('font-black', cardRoleColor[entry.cardRole!])}>{entry.cardName}</span>
+                          </span>
+                        )}
+                        {entry.type === 'pass' && (
+                          <span>
+                            <span className={cn('font-bold', teamTextColor[entry.team])}>{entry.playerName}</span>
+                            {' '}passou a vez
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Danger Zone */}
               <div className="flex flex-col gap-3 mt-auto">

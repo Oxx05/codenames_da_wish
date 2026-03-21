@@ -40,6 +40,19 @@ export interface ClueHistoryEntry {
   turn: number;
 }
 
+export type GameLogEventType = 'clue' | 'reveal' | 'pass';
+
+export interface GameLogEntry {
+  id: string;
+  type: GameLogEventType;
+  playerName: string;
+  team: TeamId;
+  word?: string;
+  count?: number;
+  cardName?: string;
+  cardRole?: TeamId;
+}
+
 interface GameState {
   // Multiplayer Connection State
   mpStatus: 'disconnected' | 'connecting' | 'lobby' | 'playing';
@@ -85,6 +98,7 @@ interface GameState {
 
   chatMessages: ChatMessage[];
   clueHistory: ClueHistoryEntry[];
+  gameLog: GameLogEntry[];
   
   // Persisted setup config so Play Again remembers your settings
   savedSetupConfig: {
@@ -115,6 +129,7 @@ interface GameState {
   resetLobby: () => void;
   disconnect: () => void;
   addChatMessage: (msg: ChatMessage) => void;
+  addGameLogEntry: (entry: Omit<GameLogEntry, 'id'>) => void;
   toggleGameRule: (rule: 'neutralEndsTurn' | 'opponentEndsTurn' | 'assassinEndsGame') => void;
   applyFullState: (state: Partial<GameState>) => void; // For host -> guest major syncs
 }
@@ -159,6 +174,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   chatMessages: [],
   clueHistory: [],
+  gameLog: [],
 
   savedSetupConfig: {
     numTeams: 2,
@@ -239,6 +255,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       },
       chatMessages: [],
       clueHistory: [],
+      gameLog: [],
       eliminatedTeams: []
     };
   }),
@@ -481,6 +498,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     guessesLeft: 0,
     chatMessages: [],
     clueHistory: [],
+    gameLog: [],
     eliminatedTeams: [],
   })),
 
@@ -496,6 +514,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   addChatMessage: (msg) => set((state) => ({
     chatMessages: [...state.chatMessages.slice(-49), msg] // Keep last 50 messages
+  })),
+
+  addGameLogEntry: (entry) => set((state) => ({
+    gameLog: [...state.gameLog.slice(-99), { ...entry, id: `${Date.now()}-${Math.random()}` }]
   })),
   
   toggleGameRule: (rule) => set((state) => ({ 

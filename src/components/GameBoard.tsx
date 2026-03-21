@@ -16,7 +16,7 @@ export default function GameBoard() {
     cards, remaining, currentTurn, turnPhase, clue, guessesLeft, winner, numTeams,
     theme, totalCards, assassinCount, neutralEndsTurn, opponentEndsTurn, assassinEndsGame, turnTimer, turnEndTime,
     sfxEnabled, toggleSFX, stats,
-    chatMessages, clueHistory, addChatMessage, eliminatedTeams
+    chatMessages, clueHistory, gameLog, addChatMessage, eliminatedTeams
   } = useGameStore();
   const { disconnect, broadcastAction, sendActionToHost } = usePeerStore();
 
@@ -43,10 +43,13 @@ export default function GameBoard() {
   const handleGiveClue = (e: React.FormEvent) => {
     e.preventDefault();
     if (!iAmActiveSpymaster || !clueWord.trim()) return;
-    const action = { type: 'GIVE_CLUE', clue: clueWord.trim().toUpperCase(), count: clueCount };
+    const word = clueWord.trim().toUpperCase();
+    const action = { type: 'GIVE_CLUE', clue: word, count: clueCount, playerName: me?.name, playerTeam: me?.team };
     if (isHost) {
-      useGameStore.getState().giveClue(clueWord.trim().toUpperCase(), clueCount);
-      broadcastAction(action as any);
+      useGameStore.getState().giveClue(word, clueCount);
+      if (me) useGameStore.getState().addGameLogEntry({ type: 'clue', playerName: me.name, team: me.team, word, count: clueCount });
+      const s = useGameStore.getState();
+      broadcastAction({ type: 'SYNC_STATE', state: { turnPhase: s.turnPhase, clue: s.clue, guessesLeft: s.guessesLeft, turnEndTime: s.turnEndTime, gameLog: s.gameLog } } as any);
     } else {
       sendActionToHost(action as any);
     }
@@ -54,23 +57,25 @@ export default function GameBoard() {
 
   const handleCardClick = (index: number) => {
     if (!iAmActiveOperative || cards[index].revealed || winner) return;
-    
+
     if (sfxEnabled) SFX.cardFlip();
 
     // Fix 4: flip lock — delay overlay transitions until animation completes
     flipLockRef.current = true;
     if (flipLockTimerRef.current) clearTimeout(flipLockTimerRef.current);
     flipLockTimerRef.current = setTimeout(() => { flipLockRef.current = false; }, 650);
-    const action = { type: 'REVEAL_CARD', index };
+    const cardBefore = cards[index];
+    const action = { type: 'REVEAL_CARD', index, playerName: me?.name, playerTeam: me?.team };
     useGameStore.getState().revealCard(index);
     if (isHost) {
+      if (me) useGameStore.getState().addGameLogEntry({ type: 'reveal', playerName: me.name, team: me.team, cardName: cardBefore.name, cardRole: cardBefore.role });
       const newState = useGameStore.getState();
-      broadcastAction({ 
-        type: 'SYNC_STATE', 
-        state: { cards: newState.cards, remaining: newState.remaining, turnPhase: newState.turnPhase, currentTurn: newState.currentTurn, guessesLeft: newState.guessesLeft, winner: newState.winner }
+      broadcastAction({
+        type: 'SYNC_STATE',
+        state: { cards: newState.cards, remaining: newState.remaining, turnPhase: newState.turnPhase, currentTurn: newState.currentTurn, guessesLeft: newState.guessesLeft, winner: newState.winner, eliminatedTeams: newState.eliminatedTeams, turnEndTime: newState.turnEndTime, gameLog: newState.gameLog }
       });
     } else {
-      sendActionToHost(action as any); 
+      sendActionToHost(action as any);
     }
   };
 
@@ -183,10 +188,15 @@ export default function GameBoard() {
 
   const handleEndTurn = () => {
     if (!iAmActiveOperative || winner) return;
-    const action = { type: 'END_TURN' } as any;
-    useGameStore.getState().endTurn();
-    if (isHost) broadcastAction(action);
-    else sendActionToHost(action);
+    if (isHost) {
+      if (me) useGameStore.getState().addGameLogEntry({ type: 'pass', playerName: me.name, team: me.team });
+      useGameStore.getState().endTurn();
+      const s = useGameStore.getState();
+      broadcastAction({ type: 'SYNC_STATE', state: { turnPhase: s.turnPhase, currentTurn: s.currentTurn, eliminatedTeams: s.eliminatedTeams, guessesLeft: s.guessesLeft, clue: s.clue, turnEndTime: s.turnEndTime, gameLog: s.gameLog } } as any);
+    } else {
+      useGameStore.getState().endTurn();
+      sendActionToHost({ type: 'END_TURN', playerName: me?.name, playerTeam: me?.team } as any);
+    }
   };
 
    const handleResetLobby = () => {
@@ -257,6 +267,11 @@ export default function GameBoard() {
   };
   const teamTextColor: Record<string, string> = {
     red: 'text-red-400', blue: 'text-blue-400', green: 'text-green-400', yellow: 'text-yellow-400',
+  };
+
+  const cardRoleColor: Record<string, string> = {
+    red: 'text-red-400', blue: 'text-blue-400', green: 'text-green-400', yellow: 'text-yellow-400',
+    neutral: 'text-stone-400', assassin: 'text-rose-500',
   };
 
   // Grid columns: the key insight is to match rows to fill the screen.
@@ -541,18 +556,36 @@ export default function GameBoard() {
             </div>
           )}
 
-          {/* Clue History */}
-          {clueHistory.length > 0 && (
+          {/* Game Log */}
+          {gameLog.length > 0 && (
             <div className="bg-slate-800/40 p-3 rounded-xl border border-slate-700/50">
               <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-2">
-                <History className="w-3 h-3" /> Clue Log
+                <History className="w-3 h-3" /> Game Log
               </h4>
-              <div className="flex flex-col gap-1 max-h-32 overflow-y-auto custom-scrollbar">
-                {clueHistory.map((c, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs">
-                    <span className={cn("w-2 h-2 rounded-full shrink-0", c.team === 'red' ? 'bg-red-500' : c.team === 'blue' ? 'bg-blue-500' : c.team === 'green' ? 'bg-green-500' : 'bg-yellow-500')} />
-                    <span className="font-black text-slate-200 uppercase">{c.word}</span>
-                    <span className="text-slate-500 font-bold">{c.count}</span>
+              <div className="flex flex-col gap-1 max-h-40 overflow-y-auto custom-scrollbar">
+                {gameLog.map((entry) => (
+                  <div key={entry.id} className="text-[11px] leading-snug">
+                    {entry.type === 'clue' && (
+                      <span>
+                        <span className={cn('font-bold', teamTextColor[entry.team])}>{entry.playerName}</span>
+                        {' '}deu a pista{' '}
+                        <span className="font-black text-white">{entry.word}</span>
+                        {' '}<span className="text-slate-400">{entry.count}</span>
+                      </span>
+                    )}
+                    {entry.type === 'reveal' && (
+                      <span>
+                        <span className={cn('font-bold', teamTextColor[entry.team])}>{entry.playerName}</span>
+                        {' '}escolheu{' '}
+                        <span className={cn('font-black', cardRoleColor[entry.cardRole!])}>{entry.cardName}</span>
+                      </span>
+                    )}
+                    {entry.type === 'pass' && (
+                      <span>
+                        <span className={cn('font-bold', teamTextColor[entry.team])}>{entry.playerName}</span>
+                        {' '}passou a vez
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -583,11 +616,19 @@ export default function GameBoard() {
       </main>
 
       {/* ===== FOOTER: Ultra compact on mobile ===== */}
-      <footer className="bg-slate-900 border-t border-slate-800 px-2 py-1 sm:p-2 lg:p-3 flex justify-center items-center gap-2 sm:gap-3 z-10 shrink-0">
+      <footer className={cn(
+        "bg-slate-900 border-t px-2 py-1 sm:p-2 lg:p-3 flex justify-center items-center gap-2 sm:gap-3 z-10 shrink-0 transition-colors duration-300",
+        (iAmActiveOperative || iAmActiveSpymaster) && !winner
+          ? myTeam === 'red' ? 'border-red-500/70' : myTeam === 'blue' ? 'border-blue-500/70' : myTeam === 'green' ? 'border-green-500/70' : 'border-yellow-500/70'
+          : 'border-slate-800'
+      )}>
         
         {/* Spymaster Clue Input */}
         {iAmActiveSpymaster && (
-          <form onSubmit={handleGiveClue} className="flex gap-1 sm:gap-2 items-center w-full max-w-lg h-9 sm:h-11">
+          <form onSubmit={handleGiveClue} className={cn(
+            "flex gap-1 sm:gap-2 items-center w-full max-w-lg h-9 sm:h-11 rounded-lg ring-1",
+            myTeam === 'red' ? 'ring-red-500/40' : myTeam === 'blue' ? 'ring-blue-500/40' : myTeam === 'green' ? 'ring-green-500/40' : 'ring-yellow-500/40'
+          )}>
             <input 
               type="text" 
               value={clueWord}
@@ -700,9 +741,8 @@ export default function GameBoard() {
                 </div>
               )}
             </div>
-          
-          <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl overflow-hidden mt-10">
-            <div className="bg-slate-800/50 p-4 border-b border-slate-700 flex justify-between items-center">
+
+          <div className="bg-slate-800/50 p-4 border-b border-slate-700 flex justify-between items-center">
               <h3 className="text-sm font-black uppercase tracking-widest text-slate-300 flex items-center gap-2">
                 <BarChart2 className="w-4 h-4 text-emerald-400" /> Match Stats
               </h3>
@@ -763,7 +803,6 @@ export default function GameBoard() {
             </div>
           </div>
         </div>
-      </div>
     )}
 
       {/* Button to show stats back after peaking */}
@@ -834,30 +873,12 @@ export default function GameBoard() {
                 </div>
                 <div className="mt-1 pt-3 border-t border-slate-700/50 flex flex-col gap-3">
                   <div className="flex justify-between items-center text-sm">
-                    <span className="text-slate-400 font-bold">Neutral Ends Turn</span>
-                    <span className={cn("font-bold px-2 py-1 rounded text-xs uppercase", neutralEndsTurn ? "bg-rose-500/20 text-rose-400" : "bg-emerald-500/20 text-emerald-400")}>
-                      {neutralEndsTurn ? 'Yes' : 'No'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-slate-400 font-bold">Opponent Ends Turn</span>
-                    <span className={cn("font-bold px-2 py-1 rounded text-xs uppercase", opponentEndsTurn ? "bg-rose-500/20 text-rose-400" : "bg-emerald-500/20 text-emerald-400")}>
-                      {opponentEndsTurn ? 'Yes' : 'No'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-slate-400 font-bold">Assassin Ends Game</span>
-                    <span className={cn("font-bold px-2 py-1 rounded text-xs uppercase", assassinEndsGame ? "bg-rose-500/20 text-rose-400" : "bg-emerald-500/20 text-emerald-400")}>
-                      {assassinEndsGame ? 'Yes' : 'No'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
                     <span className="text-slate-400 font-bold">Turn Timer</span>
                     <span className="text-slate-200 font-bold">{turnTimer === 0 ? 'Off' : `${turnTimer}s`}</span>
                   </div>
                   <div className="flex justify-between items-center text-sm">
                     <span className="text-slate-400 font-bold">Sound Effects</span>
-                    <button 
+                    <button
                       onClick={toggleSFX}
                       className={cn("px-3 py-1 rounded-md text-[10px] font-black uppercase transition-all", sfxEnabled ? "bg-emerald-500 text-emerald-950" : "bg-slate-700 text-slate-400")}
                     >
@@ -866,7 +887,7 @@ export default function GameBoard() {
                   </div>
                   <div className="flex justify-between items-center text-sm">
                     <span className="text-slate-400 font-bold">Neutral Ends Turn</span>
-                    <button 
+                    <button
                       onClick={() => {
                         if (!isHost) return;
                         useGameStore.getState().toggleGameRule('neutralEndsTurn');
@@ -879,7 +900,7 @@ export default function GameBoard() {
                   </div>
                   <div className="flex justify-between items-center text-sm">
                     <span className="text-slate-400 font-bold">Opponent Ends Turn</span>
-                    <button 
+                    <button
                       onClick={() => {
                         if (!isHost) return;
                         useGameStore.getState().toggleGameRule('opponentEndsTurn');
@@ -892,7 +913,7 @@ export default function GameBoard() {
                   </div>
                   <div className="flex justify-between items-center text-sm">
                     <span className="text-slate-400 font-bold">Assassin Ends Game</span>
-                    <button 
+                    <button
                       onClick={() => {
                         if (!isHost) return;
                         useGameStore.getState().toggleGameRule('assassinEndsGame');
@@ -958,18 +979,36 @@ export default function GameBoard() {
                 </div>
               )}
 
-              {/* Clue History (Mobile) */}
-              {clueHistory.length > 0 && (
+              {/* Game Log (Mobile) */}
+              {gameLog.length > 0 && (
                 <div className="bg-slate-800/40 p-3 rounded-xl border border-slate-700/50">
                   <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-2">
-                    <History className="w-3.5 h-3.5" /> Clue Log
+                    <History className="w-3.5 h-3.5" /> Game Log
                   </h4>
-                  <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto custom-scrollbar">
-                    {clueHistory.map((c, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm">
-                        <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", c.team === 'red' ? 'bg-red-500' : c.team === 'blue' ? 'bg-blue-500' : c.team === 'green' ? 'bg-green-500' : 'bg-yellow-500')} />
-                        <span className="font-black text-slate-200 uppercase">{c.word}</span>
-                        <span className="text-slate-500 font-bold">{c.count}</span>
+                  <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto custom-scrollbar">
+                    {gameLog.map((entry) => (
+                      <div key={entry.id} className="text-xs leading-snug">
+                        {entry.type === 'clue' && (
+                          <span>
+                            <span className={cn('font-bold', teamTextColor[entry.team])}>{entry.playerName}</span>
+                            {' '}deu a pista{' '}
+                            <span className="font-black text-white">{entry.word}</span>
+                            {' '}<span className="text-slate-400">{entry.count}</span>
+                          </span>
+                        )}
+                        {entry.type === 'reveal' && (
+                          <span>
+                            <span className={cn('font-bold', teamTextColor[entry.team])}>{entry.playerName}</span>
+                            {' '}escolheu{' '}
+                            <span className={cn('font-black', cardRoleColor[entry.cardRole!])}>{entry.cardName}</span>
+                          </span>
+                        )}
+                        {entry.type === 'pass' && (
+                          <span>
+                            <span className={cn('font-bold', teamTextColor[entry.team])}>{entry.playerName}</span>
+                            {' '}passou a vez
+                          </span>
+                        )}
                       </div>
                     ))}
                   </div>
